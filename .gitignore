@@ -1,0 +1,23 @@
+# Python - קבצים זמניים
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Data set
+backend_python/data/
+*.csv
+*.xlsx
+*.pkl
+
+# Java - קבצי הרצה והגדרות IDE
+*.class
+*.log
+.idea/
+*.iml
+target/
+out/
+
+# OS specific
+.DS_Store
+Thumbs.db
