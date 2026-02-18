@@ -1,16 +1,16 @@
 import pandas as pd
 
-# נתיב לקובץ המאוחד
+# Path to the unified dataset created in the previous step
 file_path = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data\phishing_data.csv"
 
-# טעינת הנתונים
+# Load the dataset into a Pandas DataFrame
 df = pd.read_csv(file_path)
 
-# בדיקה ראשונית
-print(f"סה\"כ שורות במאגר: {len(df)}")
-print("\n--- חמש השורות הראשונות במאגר המאוחד ---")
+# Initial data inspection
+print(f"Total rows in dataset: {len(df)}")
+print("\n--- First five rows of the unified dataset ---")
 print(df.head())
 
-# בדיקת שמות העמודות
-print("\n--- שמות העמודות שמצאתי ---")
+# Inspection of column names to identify 'body', 'label', and 'urls'
+print("\n--- Detected column names ---")
 print(df.columns.tolist())
