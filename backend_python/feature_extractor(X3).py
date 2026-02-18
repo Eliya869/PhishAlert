@@ -17,7 +17,7 @@ def extract_basic_features(df):
 
     # בדיקת נוכחות קישורים (X1)
     print("בודק נוכחות קישורים (URLs)...")
-    df['has_urls'] = df['body'].apply(lambda x: 1 if len(re.findall(r'http[s]?://', x)) > 0 else 0)
+    df['has_urls'] = df['body'].str.contains(r'http[s]?://', regex=True).astype(int)
 
     return df
 
