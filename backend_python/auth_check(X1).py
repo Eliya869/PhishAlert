@@ -3,9 +3,8 @@ import os
 import re
 
 """
-AUTHENTICATION CHECKER (X1)
-This script scans email headers/text for SPF and DKIM authentication signatures.
-It assigns a binary value (1 if verified, 0 otherwise) to help the model identify spoofed senders.
+auth_check(X1) - implemented Sender authentication via SPF & DKIM.
+Returns 1 for verified senders, 0 for potential spoofing..
 """
 def verify_authentication_headers(text):
     text = str(text).lower()

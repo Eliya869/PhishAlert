@@ -1,5 +1,9 @@
 import pandas as pd
 
+"""
+data_check - made sure that the combined file of emails actually worked
+"""
+
 # Path to the unified dataset created in the previous step
 file_path = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data\phishing_data.csv"
 

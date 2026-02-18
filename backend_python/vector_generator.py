@@ -2,8 +2,8 @@ import pandas as pd
 import os
 
 """
-FEATURE VECTOR GENERATOR - This script aggregates all numerical features (X1, X2, X3) into a single matrix.
-It removes raw text to prepare the dataset for Machine Learning training.
+vector_generator - Aggregate X1, X2, and X3 features into a final numerical matrix.
+Prepares the dataset for ML training by removing all raw text.
 """
 
 # File paths configuration

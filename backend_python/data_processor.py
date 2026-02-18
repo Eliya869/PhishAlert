@@ -1,6 +1,11 @@
 import pandas as pd
 import os
 
+"""
+data processor - combined all files(emails) into one
+"""
+
+
 # Define the path to the data folder
 data_path = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
 output_file = os.path.join(data_path, "phishing_data.csv")

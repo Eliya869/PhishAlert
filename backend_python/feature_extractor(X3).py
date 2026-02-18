@@ -2,6 +2,10 @@ import pandas as pd
 import re
 import os
 
+"""
+feature_extractor(X3) - extracted all features from every email(suspicious words,url's,etc)
+"""
+
 def extract_basic_features(df):
     # Ensure there are no null values in the email body
     df['body'] = df['body'].fillna('')
