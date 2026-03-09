@@ -97,7 +97,7 @@ else:
             # Extract the actual model if it was saved in a dictionary
             if isinstance(lr_data, dict) and 'model' in lr_data:
                 lr_model = lr_data['model']
-                scaler = lr_data.get('scaler')  # Scaler will be needed for Week 7 API
+                scaler = lr_data.get('scaler')
             else:
                 lr_model = lr_data
 
