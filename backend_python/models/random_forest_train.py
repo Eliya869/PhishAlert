@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-import joblib  # Switched from pickle to joblib for better stability
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (accuracy_score, recall_score,
@@ -8,9 +8,8 @@ from sklearn.metrics import (accuracy_score, recall_score,
                              classification_report)
 
 """
-random_forest_model (Week 6) - trains Random Forest on model_ready_data.csv.
+random_forest_model - trains Random Forest on model_ready_data.csv.
 Implements Ensemble PhishScore logic: (RF * 0.7 + LR * 0.3) * 100
-Output: random_forest_model.pkl (used together with logistic_model.pkl in Week 7 API)
 """
 
 # File paths

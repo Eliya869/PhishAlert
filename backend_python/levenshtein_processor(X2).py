@@ -46,7 +46,7 @@ def extract_domain_from_text(text):
     if email_match:
         return email_match.group(1).strip().lower()
 
-    # Try to find a URL domain (http://domain.com or https://domain.com)
+    # Try to find a URL domain (http://domain.com or https://domain)
     url_match = re.search(r'https?://([\w.\-]+)', text)
     if url_match:
         return url_match.group(1).strip().lower()
@@ -57,7 +57,7 @@ def extract_domain_from_text(text):
 def min_levenshtein(domain):
     """Returns the minimum distance to any known legitimate domain."""
     if not domain:
-        return 0.5  # Neutral value — no domain found, not safe nor dangerous
+        return 0.5  # Neutral value — no domain found, not safe not dangerous
     return min([get_levenshtein_distance(domain, legal) for legal in top_legal_domains])
 
 
