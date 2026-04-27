@@ -4,122 +4,111 @@ import re
 from difflib import SequenceMatcher
 
 """
-levenshtein_processor(X2) - measures domain similarity against known legitimate domains.
-FIX: When sender is missing (int this case: 115K+ rows), extracts domain from text_combined instead.
-     This prevents 73% of rows returning 1.0 (uninformative default).
+PHISHALERT - ADVANCED LEVENSHTEIN PROCESSOR (X2)
+Improvements: Brand isolation, Homoglyph mapping, and Weighted Danger Scoring.
+Fulfills Agile Milestone: Precision Engineering for Phishing Detection.
 """
 
-#File paths
-data_path   = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
-input_file  = os.path.join(data_path, "processed_data.csv")
+# File paths
+data_path = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
+input_file = os.path.join(data_path, "processed_data.csv")
 output_file = os.path.join(data_path, "final_features.csv")
 
-# Known legitimate domains for comparison (X2 feature)
-top_legal_domains = ['paypal.com', 'google.com', 'microsoft.com',
-                     'bankofamerica.com', 'gov.il', 'amazon.com',
-                     'apple.com', 'facebook.com', 'linkedin.com']
+# Known legitimate brands (Isolated from TLDs for better matching)
+TOP_BRANDS = ['paypal', 'google', 'microsoft', 'amazon', 'apple', 'facebook', 'linkedin', 'netflix', 'bankofamerica']
 
 
-#Helper functions
-def get_levenshtein_distance(s1, s2):
-    """Returns distance score: 0.0 = identical, 1.0 = completely different."""
-    m = SequenceMatcher(None, s1, s2)
-    return 1 - m.ratio()
-
-
-def extract_domain_from_sender(sender):
-    """Extracts domain from standard email: 'Name <user@domain.com>' or 'user@domain.com'"""
-    sender = str(sender)
-    match = re.search(r'@([\w.\-]+)', sender)
-    return match.group(1).strip().lower() if match else ""
-
-
-def extract_domain_from_text(text):
+def normalize_homoglyphs(text):
     """
-    Fallback: scans text_combined for the first email address or URL domain.
-    Used when sender column is empty.
+    Standardizes look-alike characters to catch visual deception.
+    e.g., 'paypa1' becomes 'paypal', 'amaz0n' becomes 'amazon'.
     """
-    text = str(text)
-
-    # Try to find an email address in the text first
-    email_match = re.search(r'@([\w.\-]+)', text)
-    if email_match:
-        return email_match.group(1).strip().lower()
-
-    # Try to find a URL domain (http://domain.com or https://domain)
-    url_match = re.search(r'https?://([\w.\-]+)', text)
-    if url_match:
-        return url_match.group(1).strip().lower()
-
-    return ""
+    replacements = {
+        '0': 'o', '1': 'l', '8': 'b', 'vv': 'w', 'rn': 'm',
+        'i': 'l', '!': 'l', '@': 'a', '5': 's', '3': 'e'
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    return text
 
 
-def min_levenshtein(domain):
-    """Returns the minimum distance to any known legitimate domain."""
-    if not domain:
-        return 0.5  # Neutral value — no domain found, not safe not dangerous
-    return min([get_levenshtein_distance(domain, legal) for legal in top_legal_domains])
+def get_brand_part(domain):
+    """Extracts the primary brand name from a domain (e.g., 'paypa1' from 'paypa1.com')"""
+    if not domain: return ""
+    return domain.split('.')[0].lower()
+
+
+def calculate_smart_score(extracted_domain):
+    """
+    Calculates a weighted danger score.
+    Returns: 1.0 (Identical to brand - Safe),
+             0.0 (Typosquatting detected - Danger),
+             0.5 (Neutral).
+    """
+    if not extracted_domain:
+        return 0.5
+
+    current_brand = get_brand_part(extracted_domain)
+    normalized_brand = normalize_homoglyphs(current_brand)
+
+    max_risk = 0.5  # Default neutral
+
+    for target in TOP_BRANDS:
+        # Case A: Homoglyph Attack (e.g., 'amaz0n' becomes 'amazon' after normalization)
+        if normalized_brand == target and current_brand != target:
+            return 0.0  # Extreme Danger
+
+        # Case B: Exact Match (Safe)
+        if current_brand == target:
+            return 1.0
+
+        # Case C: Structural Similarity (Typosquatting)
+        # We calculate the ratio on the brand parts only
+        similarity = SequenceMatcher(None, current_brand, target).ratio()
+
+        # In phishing, a similarity between 0.7 and 0.9 is the "Danger Zone"
+        # (e.g., 'paypa1' vs 'paypal')
+        if 0.7 < similarity < 1.0:
+            return 0.1  # Very Suspicious
+
+    return max_risk
 
 
 # ── Main processing ────────────────────────────────────────────────────────────
-if not os.path.exists(input_file):
-    print(f"Error: Input file {input_file} not found.")
-else:
-    print("--- Levenshtein Processor (X2) - Fixed Version ---")
-    print("\nStep 1: Loading processed_data.csv...")
+
+def process_levenshtein():
+    if not os.path.exists(input_file):
+        print(f"Error: {input_file} not found.")
+        return
+
+    print("--- PhishAlert Smart Levenshtein Processor ---")
     df = pd.read_csv(input_file, low_memory=False)
-    print(f"Total rows loaded: {len(df)}")
 
-    # ── Step 2: Extract domain (sender first, text_combined as fallback) ───────
-    print("\nStep 2: Extracting domains...")
+    # Using the extraction logic from your original script
+    def extract_best_domain(row):
+        sender = str(row.get('sender', ''))
+        sender_domain = re.search(r'@([\w.\-]+)', sender)
+        if sender_domain:
+            return sender_domain.group(1).lower()
 
-    sender_col       = 'sender'       if 'sender'       in df.columns else None
-    text_combined_col = 'text_combined' if 'text_combined' in df.columns else None
+        text = str(row.get('text_combined', ''))
+        text_domain = re.search(r'@([\w.\-]+)', text) or re.search(r'https?://([\w.\-]+)', text)
+        return text_domain.group(1).lower() if text_domain else ""
 
-    domains = []
-    source_counts = {'sender': 0, 'text_combined': 0, 'none': 0}
+    print("Extracting domains and calculating danger scores...")
+    df['extracted_domain'] = df.apply(extract_best_domain, axis=1)
 
-    for _, row in df.iterrows():
-        domain = ""
 
-        # Try sender first
-        if sender_col and pd.notna(row[sender_col]) and str(row[sender_col]).strip():
-            domain = extract_domain_from_sender(row[sender_col])
+    df['levenshtein_dist'] = df['extracted_domain'].apply(calculate_smart_score)
 
-        # Fallback to text_combined
-        if not domain and text_combined_col and pd.notna(row[text_combined_col]):
-            domain = extract_domain_from_text(row[text_combined_col])
-            if domain:
-                source_counts['text_combined'] += 1
-            else:
-                source_counts['none'] += 1
-        elif domain:
-            source_counts['sender'] += 1
-        else:
-            source_counts['none'] += 1
+    # Show results
+    print("\nSmart Levenshtein Score Distribution:")
+    print(df['levenshtein_dist'].value_counts().head(5))
 
-        domains.append(domain)
-
-    df['extracted_domain'] = domains
-
-    print(f"  Domains from sender       : {source_counts['sender']:,}")
-    print(f"  Domains from text_combined: {source_counts['text_combined']:,}")
-    print(f"  No domain found           : {source_counts['none']:,}")
-
-    # ── Step 3: Calculate Levenshtein distance ─────────────────────────────────
-    print("\nStep 3: Calculating Levenshtein Distance (X2)...")
-    df['levenshtein_dist'] = df['extracted_domain'].apply(min_levenshtein)
-
-    # ── Step 4: Show distribution (should be much more varied now) ────────────
-    print("\nLevenshtein distance distribution (fixed):")
-    print(df['levenshtein_dist'].describe().round(4).to_string())
-    print("\nTop value counts:")
-    print(df['levenshtein_dist'].value_counts().head(5).to_string())
-
-    # ── Step 5: Drop helper column and save ───────────────────────────────────
     df.drop(columns=['extracted_domain'], inplace=True)
     df.to_csv(output_file, index=False)
+    print(f"\nSuccess! Features saved to: {output_file}")
 
-    print(f"\n--- Process Complete ---")
-    print(f"Fixed features saved to: {output_file}")
-    print(f"Next step: run auth_check(X1).py → then vector_generator.py")
+
+if __name__ == "__main__":
+    process_levenshtein()
