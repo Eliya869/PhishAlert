@@ -3,12 +3,17 @@ package PhishAlertGUI;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.JTableHeader;
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 /**
- * PhishAlert MainWindow - Enhanced Week 12 Implementation
- * Includes: Graphical Risk Meter, Security Alerts, and Human-in-the-Loop Feedback.
+ * PhishAlert MainWindow - Complete Implementation
+ * Includes: Graphical Risk Meter, Security Alerts, Feedback Loop, and Scan History.
  */
 public class MainWindow extends JFrame {
 
@@ -26,10 +31,11 @@ public class MainWindow extends JFrame {
     private JTextField senderField;
     private JTextArea bodyArea;
     private RoundedButton scanButton;
+    private RoundedButton historyButton;
     private JLabel statusLabel;
     private JProgressBar riskMeter;
 
-    // --- Feedback Loop Components (Week 12) ---
+    // Feedback Loop Components
     private JPanel feedbackPanel;
     private JButton btnReportMistake;
     private String lastSender = "";
@@ -42,7 +48,7 @@ public class MainWindow extends JFrame {
 
     private void setupWindow() {
         setTitle("PhishAlert | Advanced Security Engine");
-        setSize(600, 850); // Slightly taller to fit feedback
+        setSize(600, 850);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         getContentPane().setBackground(COLOR_BG);
@@ -55,6 +61,9 @@ public class MainWindow extends JFrame {
         header.setBackground(COLOR_BG);
         header.setBorder(new EmptyBorder(30, 40, 10, 40));
 
+        JPanel titlePanel = new JPanel(new BorderLayout());
+        titlePanel.setBackground(COLOR_BG);
+
         JLabel title = new JLabel("PhishAlert Project");
         title.setFont(new Font("Segoe UI", Font.BOLD, 26));
         title.setForeground(COLOR_ACCENT);
@@ -63,8 +72,17 @@ public class MainWindow extends JFrame {
         subtitle.setForeground(Color.GRAY);
         subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 14));
 
-        header.add(title, BorderLayout.NORTH);
-        header.add(subtitle, BorderLayout.SOUTH);
+        titlePanel.add(title, BorderLayout.NORTH);
+        titlePanel.add(subtitle, BorderLayout.SOUTH);
+
+        // History Button in Header
+        historyButton = new RoundedButton("VIEW HISTORY");
+        historyButton.setPreferredSize(new Dimension(130, 35));
+        historyButton.setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        header.add(titlePanel, BorderLayout.CENTER);
+        header.add(historyButton, BorderLayout.EAST);
+
         add(header, BorderLayout.NORTH);
 
         // --- Main Content (The Card) ---
@@ -132,7 +150,6 @@ public class MainWindow extends JFrame {
         statusLabel.setFont(new Font("Monospaced", Font.BOLD, 13));
         statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // --- Feedback Panel Setup ---
         feedbackPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 0));
         feedbackPanel.setBackground(COLOR_BG);
         feedbackPanel.setVisible(false);
@@ -163,6 +180,56 @@ public class MainWindow extends JFrame {
         // Listeners
         scanButton.addActionListener(e -> triggerScan());
         btnReportMistake.addActionListener(e -> triggerFeedback());
+        historyButton.addActionListener(e -> openHistoryDialog());
+    }
+
+    private void openHistoryDialog() {
+        JDialog historyDialog = new JDialog(this, "Scan History", true);
+        historyDialog.setSize(750, 450);
+        historyDialog.setLocationRelativeTo(this);
+        historyDialog.getContentPane().setBackground(COLOR_BG);
+
+        String[] columns = {"Date", "Sender", "Score", "Classification"};
+        DefaultTableModel model = new DefaultTableModel(columns, 0);
+        JTable table = new JTable(model);
+
+        // Table Styling
+        table.setBackground(COLOR_CARD);
+        table.setForeground(COLOR_TEXT);
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        table.setRowHeight(30);
+        table.setGridColor(new Color(50, 50, 50));
+
+        JTableHeader tableHeader = table.getTableHeader();
+        tableHeader.setBackground(new Color(40, 40, 40));
+        tableHeader.setForeground(COLOR_ACCENT);
+        tableHeader.setFont(new Font("Segoe UI", Font.BOLD, 14));
+
+        new Thread(() -> {
+            try {
+                JsonArray history = ApiService.getHistory();
+                SwingUtilities.invokeLater(() -> {
+                    for (JsonElement element : history) {
+                        JsonObject obj = element.getAsJsonObject();
+                        model.addRow(new Object[]{
+                                obj.get("scan_date").getAsString(),
+                                obj.get("sender_email").getAsString(),
+                                obj.get("phish_score").getAsString() + "%",
+                                obj.get("classification").getAsString()
+                        });
+                    }
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                        JOptionPane.showMessageDialog(historyDialog, "Error loading history: " + ex.getMessage()));
+            }
+        }).start();
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(new EmptyBorder(10, 10, 10, 10));
+        scrollPane.getViewport().setBackground(COLOR_BG);
+        historyDialog.add(scrollPane);
+        historyDialog.setVisible(true);
     }
 
     private JLabel createLabel(String text) {
@@ -195,7 +262,6 @@ public class MainWindow extends JFrame {
             return;
         }
 
-        // UI Reset
         scanButton.setEnabled(false);
         feedbackPanel.setVisible(false);
         statusLabel.setText(">> ANALYZING PATTERNS...");
@@ -204,8 +270,7 @@ public class MainWindow extends JFrame {
 
         new Thread(() -> {
             try {
-                com.google.gson.JsonObject response = ApiService.analyzeEmail(sender, body);
-
+                JsonObject response = ApiService.analyzeEmail(sender, body);
                 double score = response.get("phish_score").getAsDouble();
                 String classification = response.get("classification").getAsString();
 
@@ -213,23 +278,17 @@ public class MainWindow extends JFrame {
                     scanButton.setEnabled(true);
                     lastSender = sender;
                     lastClassification = classification;
-
                     int intScore = (int) score;
                     riskMeter.setValue(intScore);
 
-                    if (intScore < 40) {
-                        applyResult(COLOR_SAFE, "SECURE", intScore);
-                    } else if (intScore < 70) {
-                        applyResult(COLOR_SUSPICIOUS, "SUSPICIOUS", intScore);
-                    } else {
+                    if (intScore < 40) applyResult(COLOR_SAFE, "SECURE", intScore);
+                    else if (intScore < 70) applyResult(COLOR_SUSPICIOUS, "SUSPICIOUS", intScore);
+                    else {
                         applyResult(COLOR_DANGER, "PHISHING DETECTED", intScore);
                         showSecurityPopUp(score);
                     }
-
-                    // Show feedback panel after results are in
                     feedbackPanel.setVisible(true);
                 });
-
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> {
                     scanButton.setEnabled(true);
@@ -241,9 +300,7 @@ public class MainWindow extends JFrame {
     }
 
     private void triggerFeedback() {
-        // Determine the correction
         String correctLabel = lastClassification.equalsIgnoreCase("Safe") ? "Phishing" : "Safe";
-
         new Thread(() -> {
             try {
                 ApiService.sendFeedback(lastSender, correctLabel);
@@ -261,6 +318,7 @@ public class MainWindow extends JFrame {
         statusLabel.setText(">> RESULT: " + status + " (" + score + "%)");
         statusLabel.setForeground(color);
         riskMeter.setForeground(color);
+        riskMeter.setString(score + "% - " + status);
     }
 
     private void showSecurityPopUp(double score) {

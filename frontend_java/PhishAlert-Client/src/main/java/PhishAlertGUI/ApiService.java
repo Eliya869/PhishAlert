@@ -1,5 +1,6 @@
 package PhishAlertGUI;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.net.URI;
@@ -10,13 +11,14 @@ import java.time.Duration;
 
 /**
  * ApiService - Handles communication with the Python Flask Backend.
- * Features: Real-time analysis and User Feedback Loop for continuous learning.
+ * Features: Real-time analysis, User Feedback Loop, and History Retrieval.
  */
 public class ApiService {
 
     private static final String BASE_URL = "http://127.0.0.1:5000";
     private static final String ANALYZE_URL = BASE_URL + "/analyze";
     private static final String FEEDBACK_URL = BASE_URL + "/feedback";
+    private static final String HISTORY_URL = BASE_URL + "/history"; // נתיב ההיסטוריה
 
     // Reusable HttpClient for better performance
     private static final HttpClient client = HttpClient.newBuilder()
@@ -43,7 +45,6 @@ public class ApiService {
 
     /**
      * Sends the user's manual correction back to the server.
-     * This allows the model to "learn" from its mistakes for future scans.
      */
     public static JsonObject sendFeedback(String sender, String correctLabel) throws Exception {
         JsonObject jsonFeedback = new JsonObject();
@@ -58,5 +59,26 @@ public class ApiService {
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         return JsonParser.parseString(response.body()).getAsJsonObject();
+    }
+
+    /**
+     * Fetches the full scan history from the local SQLite database via the Python API.
+     * This is the method that was missing and caused the compilation error.
+     */
+    public static JsonArray getHistory() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(HISTORY_URL))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // מוודא שהתגובה תקינה לפני הפענוח
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("Failed to fetch history. Server returned: " + response.statusCode());
+        }
+
+        return JsonParser.parseString(response.body()).getAsJsonArray();
     }
 }
