@@ -4,46 +4,56 @@ import re
 from difflib import SequenceMatcher
 
 """
-PHISHALERT - ADVANCED LEVENSHTEIN PROCESSOR (X2)
-Improvements: Brand isolation, Homoglyph mapping, and Weighted Danger Scoring.
-Fulfills Agile Milestone: Precision Engineering for Phishing Detection.
+Refined logic for visual deception detection and structural similarity.
+Full implementation with expanded brands and performance optimizations.
 """
 
-# File paths
-data_path = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
-input_file = os.path.join(data_path, "processed_data.csv")
-output_file = os.path.join(data_path, "final_features.csv")
+# --- Configuration & File Paths ---
+# Ensure these paths match your local project structure
+DATA_PATH = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
+INPUT_FILE = os.path.join(DATA_PATH, "processed_data.csv")
+OUTPUT_FILE = os.path.join(DATA_PATH, "final_features.csv")
 
-# Known legitimate brands (Isolated from TLDs for better matching)
-TOP_BRANDS = ['paypal', 'google', 'microsoft', 'amazon', 'apple', 'facebook', 'linkedin', 'netflix', 'bankofamerica']
+#list of legitimate brands (Targeted by phishers)
+TOP_BRANDS = [
+    'paypal', 'google', 'microsoft', 'amazon', 'apple', 'facebook', 'linkedin',
+    'netflix', 'bankofamerica', 'ebay', 'instagram', 'whatsapp', 'gmail',
+    'twitter', 'yahoo', 'dropbox', 'steam', 'discord', 'chase',
+    'icloud', 'adobe', 'spotify', 'roblox', 'binance', 'coinbase', 'slack'
+]
 
 
 def normalize_homoglyphs(text):
     """
-    Standardizes look-alike characters to catch visual deception.
-    e.g., 'paypa1' becomes 'paypal', 'amaz0n' becomes 'amazon'.
+    Standardizes look-alike characters using an optimized translation table.
+    Converts 'paypa1' -> 'paypal', 'amaz0n' -> 'amazon', etc.
     """
-    replacements = {
-        '0': 'o', '1': 'l', '8': 'b', 'vv': 'w', 'rn': 'm',
-        'i': 'l', '!': 'l', '@': 'a', '5': 's', '3': 'e'
-    }
-    for char, replacement in replacements.items():
-        text = text.replace(char, replacement)
-    return text
+    # Create a translation table for single-character replacements
+    homoglyph_map = str.maketrans({
+        '0': 'o', '1': 'l', '8': 'b', 'i': 'l', '!': 'l',
+        '@': 'a', '5': 's', '3': 'e'
+    })
+
+    # Handle common multi-character visual tricks first
+    text = text.lower().replace('vv', 'w').replace('rn', 'm')
+
+    # Apply the bulk translation for speed
+    return text.translate(homoglyph_map)
 
 
 def get_brand_part(domain):
-    """Extracts the primary brand name from a domain (e.g., 'paypa1' from 'paypa1.com')"""
+    """Extracts the primary brand segment from a domain string (e.g., 'paypa1' from 'paypa1.com')"""
     if not domain: return ""
     return domain.split('.')[0].lower()
 
 
 def calculate_smart_score(extracted_domain):
     """
-    Calculates a weighted danger score.
-    Returns: 1.0 (Identical to brand - Safe),
-             0.0 (Typosquatting detected - Danger),
-             0.5 (Neutral).
+    Logic:
+    - 1.0: Safe (Identical to a protected brand)
+    - 0.0: High Risk (Homoglyph spoofing detected)
+    - 0.1: Suspicious (High structural similarity / Typosquatting)
+    - 0.5: Neutral (No match in the brand protection list)
     """
     if not extracted_domain:
         return 0.5
@@ -51,63 +61,53 @@ def calculate_smart_score(extracted_domain):
     current_brand = get_brand_part(extracted_domain)
     normalized_brand = normalize_homoglyphs(current_brand)
 
-    max_risk = 0.5  # Default neutral
-
     for target in TOP_BRANDS:
-        # Case A: Homoglyph Attack (e.g., 'amaz0n' becomes 'amazon' after normalization)
+        # Check for visual deception (Homoglyph Attack)
+        # If it matches after normalization but was different before, it's a spoof.
         if normalized_brand == target and current_brand != target:
-            return 0.0  # Extreme Danger
+            return 0.0
 
-        # Case B: Exact Match (Safe)
+            # Legitimate brand verification
         if current_brand == target:
             return 1.0
 
-        # Case C: Structural Similarity (Typosquatting)
-        # We calculate the ratio on the brand parts only
+        # Structural Similarity: SequenceMatcher provides the Levenshtein-based ratio
         similarity = SequenceMatcher(None, current_brand, target).ratio()
 
-        # In phishing, a similarity between 0.7 and 0.9 is the "Danger Zone"
-        # (e.g., 'paypa1' vs 'paypal')
-        if 0.7 < similarity < 1.0:
-            return 0.1  # Very Suspicious
+        # Threshold for Typosquatting: Similarity > 75% is usually a phishing attempt
+        if 0.75 <= similarity < 1.0:
+            return 0.1
 
-    return max_risk
-
-
-# ── Main processing ────────────────────────────────────────────────────────────
+    return 0.5
 
 def process_levenshtein():
-    if not os.path.exists(input_file):
-        print(f"Error: {input_file} not found.")
+    """Main function to batch-process the phishing dataset."""
+    if not os.path.exists(INPUT_FILE):
+        print(f"Error: {INPUT_FILE} not found. Please check your data directory.")
         return
 
-    print("--- PhishAlert Smart Levenshtein Processor ---")
-    df = pd.read_csv(input_file, low_memory=False)
+    print("--- Starting PhishAlert Optimized Levenshtein Processor ---")
+    df = pd.read_csv(INPUT_FILE, low_memory=False)
 
-    # Using the extraction logic from your original script
     def extract_best_domain(row):
+        """Helper to extract domain from sender email or body text."""
         sender = str(row.get('sender', ''))
-        sender_domain = re.search(r'@([\w.\-]+)', sender)
-        if sender_domain:
-            return sender_domain.group(1).lower()
+        match = re.search(r'@([\w.\-]+)', sender)
+        if match: return match.group(1).lower()
 
+        # Fallback to URLs in the text if sender is missing
         text = str(row.get('text_combined', ''))
-        text_domain = re.search(r'@([\w.\-]+)', text) or re.search(r'https?://([\w.\-]+)', text)
-        return text_domain.group(1).lower() if text_domain else ""
+        url_match = re.search(r'https?://([\w.\-]+)', text)
+        return url_match.group(1).lower() if url_match else ""
 
-    print("Extracting domains and calculating danger scores...")
+    print("Processing domains and calculating danger levels...")
     df['extracted_domain'] = df.apply(extract_best_domain, axis=1)
-
-
     df['levenshtein_dist'] = df['extracted_domain'].apply(calculate_smart_score)
 
-    # Show results
-    print("\nSmart Levenshtein Score Distribution:")
-    print(df['levenshtein_dist'].value_counts().head(5))
-
+    # Cleanup and Export
     df.drop(columns=['extracted_domain'], inplace=True)
-    df.to_csv(output_file, index=False)
-    print(f"\nSuccess! Features saved to: {output_file}")
+    df.to_csv(OUTPUT_FILE, index=False)
+    print(f"Success! Features finalized and saved to: {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
