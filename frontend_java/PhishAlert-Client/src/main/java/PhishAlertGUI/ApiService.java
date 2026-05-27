@@ -74,7 +74,6 @@ public class ApiService {
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-        // מוודא שהתגובה תקינה לפני הפענוח
         if (response.statusCode() != 200) {
             throw new RuntimeException("Failed to fetch history. Server returned: " + response.statusCode());
         }

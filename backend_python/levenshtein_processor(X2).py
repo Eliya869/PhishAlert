@@ -75,7 +75,7 @@ def calculate_smart_score(extracted_domain):
         similarity = SequenceMatcher(None, current_brand, target).ratio()
 
         # Threshold for Typosquatting: Similarity > 75% is usually a phishing attempt
-        if 0.75 <= similarity < 1.0:
+        if 0.85 <= similarity < 1.0:
             return 0.1
 
     return 0.5
@@ -86,7 +86,7 @@ def process_levenshtein():
         print(f"Error: {INPUT_FILE} not found. Please check your data directory.")
         return
 
-    print("--- Starting PhishAlert Optimized Levenshtein Processor ---")
+    print("--- Starting Levenshtein Processor ---")
     df = pd.read_csv(INPUT_FILE, low_memory=False)
 
     def extract_best_domain(row):

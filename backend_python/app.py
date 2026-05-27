@@ -11,33 +11,33 @@ app = Flask(__name__)
 # --- Configuration & Model Loading ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(BASE_DIR, "models")
-# Path for the feedback database (CSV)
 FEEDBACK_FILE = os.path.join(BASE_DIR, "data", "user_feedback.csv")
-# Path for the main SQLite database (Scan History)
 DB_PATH = os.path.join(BASE_DIR, "data", "phishalert.db")
+BRANDS_FILE = os.path.join(BASE_DIR, "data", "trusted_brands.txt")
 
-# Ensure the data directory exists
 os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
 
-# Loading the system brains
-logistic_data = joblib.load(os.path.join(MODELS_PATH, "logistic_model.pkl"))
-rf_model = joblib.load(os.path.join(MODELS_PATH, "random_forest_model.pkl"))
 
-TOP_LEGAL_DOMAINS = ['paypal', 'google', 'amazon', 'microsoft', 'apple', 'netflix', 'facebook', 'linkedin', 'icloud']
+# Dynamic loading of trusted brands from external database/file (Black-Box requirement)
+def load_trusted_brands():
+    if not os.path.exists(BRANDS_FILE):
+        # Fallback if file is missing
+        return ['paypal', 'google', 'amazon', 'microsoft', 'apple', 'netflix', 'facebook']
+    with open(BRANDS_FILE, 'r', encoding='utf-8') as f:
+        return [line.strip().lower() for line in f if line.strip()]
+
+
+# Load BOTH models for the Ensemble pipeline
+logistic_data = joblib.load(os.path.join(MODELS_PATH, "logistic_model.pkl"))
+rf_data = joblib.load(os.path.join(MODELS_PATH, "random_forest_model.pkl"))
 
 
 def get_feedback_adjustment(sender):
-    """
-    Checks if the sender has been manually reported by the user in the past.
-    Returns: 35 (Boost for Phishing), -35 (Reduction for Safe), or 0 (No feedback)
-    """
     if not os.path.exists(FEEDBACK_FILE):
         return 0
-
     try:
         df = pd.read_csv(FEEDBACK_FILE)
         sender_feedback = df[df['sender'] == sender]
-
         if not sender_feedback.empty:
             latest_correction = sender_feedback.iloc[-1]['correct_label']
             if latest_correction == "Phishing":
@@ -50,9 +50,6 @@ def get_feedback_adjustment(sender):
 
 
 def extract_live_features(body, sender):
-    """
-    Analyzes email content and returns a feature vector and metadata for the DB.
-    """
     suspicious_words = [
         'urgent', 'verify', 'account', 'update', 'password', 'bank', 'pay', 'immediately',
         'click', 'confirm', 'suspend', 'suspended', 'restricted', 'unusual',
@@ -78,23 +75,28 @@ def extract_live_features(body, sender):
         url_match = re.search(r'https?://([\w.\-]+)', body)
         domain = url_match.group(1).lower() if url_match else ""
 
+    # Dynamic calculation using external black-box brands file
+    trusted_brands = load_trusted_brands()
     lev_score = 0.5
     if domain:
-        lev_score = min([1 - SequenceMatcher(None, domain, d).ratio() for d in TOP_LEGAL_DOMAINS])
+        scores = []
+        for d in trusted_brands:
+            # Check for hidden strings or partial matches inside structural components
+            if d in domain or any(SequenceMatcher(None, sub, d).ratio() > 0.75 for sub in domain.split('-')):
+                scores.append(0.95)
+            else:
+                scores.append(1 - SequenceMatcher(None, domain, d).ratio())
+        lev_score = max(scores) if scores else 0.5
 
     features['levenshtein_dist'] = lev_score
-    features['auth_verify'] = 0  # Default, can be updated with header analysis logic
+    features['auth_verify'] = 1 if re.search(r'spf=pass|dkim=pass', body.lower()) else 0
 
-    # Build vector in specific order required by the model
     feature_order = ['has_urls', 'levenshtein_dist', 'auth_verify', 'keyword_count'] + [f'word_{w}' for w in
                                                                                         suspicious_words]
     vector = [features[col] for col in feature_order]
 
-    # Return both the vector for ML and raw data for the DB
-    return vector, domain, lev_score, keyword_count, features['has_urls']
+    return vector, domain, lev_score, keyword_count, features['has_urls'], features['auth_verify']
 
-
-# --- Main API Routes ---
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
@@ -106,25 +108,24 @@ def analyze():
         if not body:
             return jsonify({"status": "error", "message": "Email body is missing"}), 400
 
-        # 1. Feature Extraction and AI Prediction
-        # Updated to capture metadata for database logging
-        vector, domain, lev_dist, key_count, has_urls = extract_live_features(body, sender)
+        vector, domain, lev_dist, key_count, has_urls, auth_verify = extract_live_features(body, sender)
 
+        # 1. Evaluate Model 1: Logistic Regression
         scaler = logistic_data['scaler']
         vector_scaled = scaler.transform([vector])
-
         p_log = logistic_data['model'].predict_proba(vector_scaled)[0][1]
-        p_rf = rf_model.predict_proba([vector])[0][1]
 
-        # Base Ensemble Score calculation
+        # 2. Evaluate Model 2: Random Forest
+        p_rf = rf_data['model'].predict_proba([vector])[0][1]
+
+        # Soft Voting Ensemble weight balance
         base_score = (p_rf * 0.7 + p_log * 0.3) * 100
 
-        # 2. Feedback Loop Adjustment
+        # Feedback loop modifier
         adjustment = get_feedback_adjustment(sender)
         final_score = max(0, min(100, base_score + adjustment))
         classification = "Phishing" if final_score >= 50 else "Safe"
 
-        # 3. Log scan result to SQLite Database (New Addition)
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -142,7 +143,10 @@ def analyze():
             "base_ai_score": round(base_score, 2),
             "classification": classification,
             "was_adjusted": True if adjustment != 0 else False,
-            "recommendation": "Danger! Highly suspicious." if classification == "Phishing" else "Looks legitimate."
+            "recommendation": "CRITICAL RISK: System Isolation Recommended!" if classification == "Phishing" else "Legitimate Infrastructure.",
+            "lev_score": round(lev_dist, 2),
+            "ai_prob": round(p_rf * 100, 2),
+            "auth_check": "VERIFIED (SPF/DKIM PASS)" if auth_verify == 1 else "UNVERIFIED INFRASTRUCTURE"
         })
 
     except Exception as e:
@@ -151,34 +155,22 @@ def analyze():
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    """
-    Retrieves the scan history for the Java UI to display in the table.
-    """
     try:
         if not os.path.exists(DB_PATH):
-            return jsonify([])  # Return empty list if DB doesn't exist yet
-
+            return jsonify([])
         with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row  # Allows accessing columns by name
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            # Fetch latest scans first
             cursor.execute(
                 "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC")
             rows = cursor.fetchall()
-
-            # Convert SQLite rows to a list of dictionaries for JSON serialization
-            history_list = [dict(row) for row in rows]
-            return jsonify(history_list)
-
+            return jsonify([dict(row) for row in rows])
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/feedback', methods=['POST'])
 def save_feedback():
-    """
-    Endpoint for the Java UI to report if the AI was wrong.
-    """
     try:
         data = request.get_json()
         sender = data.get('sender', '')
@@ -192,14 +184,11 @@ def save_feedback():
             new_row.to_csv(FEEDBACK_FILE, index=False)
         else:
             new_row.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False)
-
         return jsonify({"status": "success", "message": "Feedback recorded."})
-
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == '__main__':
-    print("--- PhishAlert API Starting... ---")
-    # Using 0.0.0.0 to allow connections from the same machine
+    print("--- PhishAlert Advanced Network API Online ---")
     app.run(host='0.0.0.0', port=5000, debug=True)
