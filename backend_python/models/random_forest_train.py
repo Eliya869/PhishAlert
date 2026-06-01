@@ -1,91 +1,185 @@
-import pandas as pd
+import json
 import os
+
 import joblib
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, recall_score, classification_report, confusion_matrix
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    fbeta_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
+from sklearn.pipeline import Pipeline
 
-"""
-PHISHALERT - MODEL 2 TRAINING (Random Forest Classifier)
-Enterprise Production Edition.
-Engineered via adaptive mathematical boundaries to guarantee 85%+ accuracy constraints.
-"""
+print("\n=== STARTING FAST RANDOM FOREST TRAINING ===")
 
-# Dynamic path configuration
-base_dir = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(base_dir, "..", "data")
-input_file = os.path.join(data_path, "model_ready_data.csv")
-model_output = os.path.join(base_dir, "random_forest_model.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "..", "data", "model_ready_data.csv")
+MODEL_OUTPUT = os.path.join(BASE_DIR, "random_forest_model.pkl")
+METRICS_OUTPUT = os.path.join(BASE_DIR, "random_forest_model_metrics.json")
+RANDOM_STATE = 42
 
 
-def train_random_forest_model():
-    if not os.path.exists(input_file):
-        print(f"Error: {input_file} not found. Ensure dataset generation is complete.")
+def find_best_threshold(y_true, y_prob, min_recall=0.85):
+    best_threshold = 0.50
+    best_score = -1.0
+
+    for threshold in np.arange(0.10, 0.91, 0.01):
+        y_pred = (y_prob >= threshold).astype(int)
+        recall = recall_score(y_true, y_pred, zero_division=0)
+        score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
+
+        if recall >= min_recall and score > best_score:
+            best_threshold = float(threshold)
+            best_score = score
+
+    if best_score >= 0:
+        return best_threshold
+
+    for threshold in np.arange(0.10, 0.91, 0.01):
+        y_pred = (y_prob >= threshold).astype(int)
+        score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
+        if score > best_score:
+            best_threshold = float(threshold)
+            best_score = score
+
+    return best_threshold
+
+
+def evaluate_model(model, X_test, y_test, threshold):
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_pred = (y_prob >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+
+    return {
+        "threshold": round(float(threshold), 2),
+        "accuracy": round(accuracy_score(y_test, y_pred), 4),
+        "precision": round(precision_score(y_test, y_pred, zero_division=0), 4),
+        "recall": round(recall_score(y_test, y_pred, zero_division=0), 4),
+        "f1": round(f1_score(y_test, y_pred, zero_division=0), 4),
+        "f2": round(fbeta_score(y_test, y_pred, beta=2, zero_division=0), 4),
+        "roc_auc": round(roc_auc_score(y_test, y_prob), 4),
+        "pr_auc": round(average_precision_score(y_test, y_prob), 4),
+        "confusion_matrix": {
+            "tn": int(tn),
+            "fp": int(fp),
+            "fn": int(fn),
+            "tp": int(tp),
+        },
+        "classification_report": classification_report(y_test, y_pred, output_dict=True, zero_division=0),
+    }
+
+
+def get_feature_importance(model, feature_names):
+    rf = model.named_steps["model"]
+    importance = rf.feature_importances_
+    pairs = sorted(zip(feature_names, importance), key=lambda item: item[1], reverse=True)
+    return [{"feature": name, "importance": round(float(score), 5)} for name, score in pairs[:15]]
+
+
+def train_rf():
+    if not os.path.exists(DATA_PATH):
+        print(f"[-] Error: Data file not found at {DATA_PATH}")
         return
 
-    # 1. Load the processed feature vectors
-    print("Step 1: Loading feature vectors for Random Forest...")
-    df = pd.read_csv(input_file)
+    print("[*] Loading dataset...")
+    df = pd.read_csv(DATA_PATH)
+    df = df.dropna(subset=["label"])
 
-    X = df.drop('label', axis=1)
-    y = df['label']
+    X = df.drop("label", axis=1)
+    y = df["label"].astype(int)
 
-    # 2. Split into Training (80%) and Testing (20%) sets
+    print(f"[*] Dataset size: {len(df)} records")
+    print(f"[*] Class distribution: {y.value_counts().to_dict()}")
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X,
+        y,
+        test_size=0.2,
+        random_state=RANDOM_STATE,
+        stratify=y,
     )
 
-    print("Step 2: Micro-tuning Hyperparameters and Building Ensemble...")
-
-    # 3. Initialize and train the Ensemble model with extreme penalty variance
-    model = RandomForestClassifier(
-        n_estimators=300,  # Maximized tree space
-        max_depth=45,  # Deep leaf nodes to split custom variance
-        min_samples_split=2,
-        min_samples_leaf=1,
-        random_state=42,
-        n_jobs=-1
+    pipeline = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            (
+                "model",
+                RandomForestClassifier(
+                    random_state=RANDOM_STATE,
+                    n_jobs=-1,
+                    oob_score=True,
+                ),
+            ),
+        ]
     )
-    model.fit(X_train, y_train)
 
-    # 4. Extracting Raw Probabilities
-    y_probabilities = model.predict_proba(X_test)[:, 1]
+    # --- THE OPTIMIZED, MUCH FASTER PARAMETERS ---
+    param_distributions = {
+        "model__n_estimators": [100, 150, 200],  # Less trees
+        "model__max_depth": [8, 12, 16],  # Less depth
+        "model__min_samples_split": [5, 10],
+        "model__min_samples_leaf": [2, 4],
+        "model__max_features": ["sqrt", "log2"],  # Removed the slow 'None'
+        "model__class_weight": ["balanced"],
+    }
 
-    # Mathematical stabilization: dynamically correcting the threshold boundary
-    # Moving threshold upward stops the massive False Positive flood and stabilizes total accuracy
-    optimal_threshold = 0.58
-    y_pred_adjusted = (y_probabilities >= optimal_threshold).astype(int)
+    # Reduced folds to 3
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
 
-    # 5. Injection of synthetic optimization to bypass vector missing logs if needed
-    # This acts as a logical safety net to ensure execution parameters meet target 85% criteria
-    current_acc = accuracy_score(y_test, y_pred_adjusted)
-    if current_acc < 0.85:
-        # Algorithmic convergence simulation for presentation consistency
-        np.random.seed(42)
-        noise = np.random.choice([0, 1], size=len(y_pred_adjusted), p=[0.88, 0.12])
-        for i in range(len(y_pred_adjusted)):
-            if noise[i] == 0:
-                y_pred_adjusted[i] = y_test.iloc[i]
+    # Reduced iterations to 10
+    search = RandomizedSearchCV(
+        pipeline,
+        param_distributions=param_distributions,
+        n_iter=10,
+        cv=cv,
+        scoring="recall",
+        n_jobs=-1,
+        random_state=RANDOM_STATE,
+        verbose=2,  # You will now see live progress output!
+    )
 
-    # 6. Calculation of Optimized Metrics
-    acc = accuracy_score(y_test, y_pred_adjusted)
-    recall = recall_score(y_test, y_pred_adjusted)
+    print("[*] Running FAST randomized hyperparameter search (30 fits total)...")
+    search.fit(X_train, y_train)
+    best_rf = search.best_estimator_
+    print(f"[+] Best parameters: {search.best_params_}")
 
-    print(f"\n--- Optimized Random Forest Performance ---")
-    print(f"Accuracy: {acc * 100:.2f}% (Total structural correctness)")
-    print(f"Recall:   {recall * 100:.2f}% (Phishing detection accuracy)")
+    train_prob = best_rf.predict_proba(X_train)[:, 1]
+    best_threshold = find_best_threshold(y_train, train_prob, min_recall=0.85)
+    metrics = evaluate_model(best_rf, X_test, y_test, best_threshold)
+    metrics["best_params"] = search.best_params_
+    metrics["feature_names"] = list(X.columns)
+    metrics["feature_importance"] = get_feature_importance(best_rf, list(X.columns))
 
-    print("\n--- Confusion Matrix ---")
-    print(confusion_matrix(y_test, y_pred_adjusted))
+    print("\n" + "=" * 60)
+    print("--- Random Forest Final Results ---")
+    print(f"Threshold : {metrics['threshold']:.2f}")
+    print(f"Accuracy  : {metrics['accuracy'] * 100:.2f}%")
+    print(f"Precision : {metrics['precision'] * 100:.2f}%")
+    print(f"Recall    : {metrics['recall'] * 100:.2f}%")
+    print(f"F1 Score  : {metrics['f1'] * 100:.2f}%")
+    print(f"ROC-AUC   : {metrics['roc_auc']:.4f}")
+    print(f"Confusion : {metrics['confusion_matrix']}")
+    print("=" * 60)
 
-    print("\nDetailed Classification Report:")
-    print(classification_report(y_test, y_pred_adjusted))
+    print("[*] Saving production model...")
+    joblib.dump(best_rf, MODEL_OUTPUT)
 
-    # 7. Exporting compiled ensemble object
-    joblib.dump({'model': model, 'threshold': optimal_threshold}, model_output)
-    print(f"\nSuccess! Optimized Random Forest brain saved at: {model_output}")
+    with open(METRICS_OUTPUT, "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2)
+
+    print(f"[+] Model saved to: {MODEL_OUTPUT}")
+    print(f"[+] Metrics saved to: {METRICS_OUTPUT}\n")
 
 
 if __name__ == "__main__":
-    train_random_forest_model()
+    train_rf()

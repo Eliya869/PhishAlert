@@ -1,79 +1,179 @@
-import pandas as pd
+import json
 import os
+
 import joblib
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    fbeta_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, recall_score, classification_report, confusion_matrix
 
-"""
-PHISHALERT - MODEL 1 TRAINING (Logistic Regression)
-Optimized for high Recall using customized decision thresholding.
-Implements Gradient Descent optimization internally via 'lbfgs' solver.
-"""
+print("\n=== STARTING LOGISTIC REGRESSION TRAINING ===")
 
-# Dynamic path configuration
-base_dir = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(base_dir, "..", "data")
-input_file = os.path.join(data_path, "model_ready_data.csv")
-model_output = os.path.join(base_dir, "logistic_model.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "..", "data", "model_ready_data.csv")
+MODEL_OUTPUT = os.path.join(BASE_DIR, "logistic_model.pkl")
+METRICS_OUTPUT = os.path.join(BASE_DIR, "logistic_model_metrics.json")
+RANDOM_STATE = 42
 
 
-def train_logistic_model():
-    if not os.path.exists(input_file):
-        print(f"Error: {input_file} not found. Ensure preprocessing is complete.")
+def find_best_threshold(y_true, y_prob, min_recall=0.90):
+    best_threshold = 0.50
+    best_score = -1.0
+
+    for threshold in np.arange(0.10, 0.91, 0.01):
+        y_pred = (y_prob >= threshold).astype(int)
+        recall = recall_score(y_true, y_pred, zero_division=0)
+        precision = precision_score(y_true, y_pred, zero_division=0)
+        score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
+
+        if recall >= min_recall and score > best_score:
+            best_threshold = float(threshold)
+            best_score = score
+
+    if best_score >= 0:
+        return best_threshold
+
+    # Fallback: if the target recall is impossible, choose the best F2 threshold.
+    for threshold in np.arange(0.10, 0.91, 0.01):
+        y_pred = (y_prob >= threshold).astype(int)
+        score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
+        if score > best_score:
+            best_threshold = float(threshold)
+            best_score = score
+
+    return best_threshold
+
+
+def evaluate_model(model, X_test, y_test, threshold):
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_pred = (y_prob >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+
+    return {
+        "threshold": round(float(threshold), 2),
+        "accuracy": round(accuracy_score(y_test, y_pred), 4),
+        "precision": round(precision_score(y_test, y_pred, zero_division=0), 4),
+        "recall": round(recall_score(y_test, y_pred, zero_division=0), 4),
+        "f1": round(f1_score(y_test, y_pred, zero_division=0), 4),
+        "f2": round(fbeta_score(y_test, y_pred, beta=2, zero_division=0), 4),
+        "roc_auc": round(roc_auc_score(y_test, y_prob), 4),
+        "pr_auc": round(average_precision_score(y_test, y_prob), 4),
+        "confusion_matrix": {
+            "tn": int(tn),
+            "fp": int(fp),
+            "fn": int(fn),
+            "tp": int(tp),
+        },
+        "classification_report": classification_report(y_test, y_pred, output_dict=True, zero_division=0),
+    }
+
+
+def train_logistic():
+    if not os.path.exists(DATA_PATH):
+        print(f"[-] Error: Data file not found at {DATA_PATH}")
         return
 
-    # 1. Load the processed feature vectors
-    print("Step 1: Loading feature vectors...")
-    df = pd.read_csv(input_file)
+    print("[*] Loading dataset...")
+    df = pd.read_csv(DATA_PATH)
+    df = df.dropna(subset=["label"])
 
-    X = df.drop('label', axis=1)
-    y = df['label']
+    X = df.drop("label", axis=1)
+    y = df["label"].astype(int)
 
-    # 2. Split into Training (80%) and Testing (20%) sets (FIXED KEYWORD HERE)
+    print(f"[*] Dataset size: {len(df)} records")
+    print(f"[*] Class distribution: {y.value_counts().to_dict()}")
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X,
+        y,
+        test_size=0.2,
+        random_state=RANDOM_STATE,
+        stratify=y,
     )
 
-    # 3. Feature Scaling (CRITICAL for Gradient Descent Convergence)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    pipeline = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            (
+                "model",
+                LogisticRegression(
+                    max_iter=5000,
+                    random_state=RANDOM_STATE,
+                ),
+            ),
+        ]
+    )
 
-    print("Step 2: Training Logistic Regression Engine...")
+    param_grid = {
+        "model__C": [0.01, 0.05, 0.1, 0.5, 1, 3, 10],
+        "model__solver": ["lbfgs", "liblinear"],
+        "model__class_weight": ["balanced", None],
+        "model__penalty": ["l2"],
+    }
 
-    # 4. Initialize and train the model
-    # Uses 'class_weight=balanced' to mathematically punish False Negatives during Gradient Descent
-    model = LogisticRegression(max_iter=2000, class_weight='balanced', random_state=42, solver='lbfgs')
-    model.fit(X_train_scaled, y_train)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    grid_search = GridSearchCV(
+        pipeline,
+        param_grid,
+        cv=cv,
+        scoring="recall",
+        n_jobs=-1,
+        verbose=1,
+    )
 
-    # 5. Advanced Evaluation via Customized Threshold (Optimizing Recall)
-    # Extract raw probabilities instead of hard binary predictions
-    y_probabilities = model.predict_proba(X_test_scaled)[:, 1]
+    print("[*] Running hyperparameter search...")
+    grid_search.fit(X_train, y_train)
+    best_model = grid_search.best_estimator_
+    print(f"[+] Best parameters: {grid_search.best_params_}")
 
-    # Lower threshold from 0.5 to 0.35 to catch more sophisticated phishing payloads
-    y_pred_adjusted = (y_probabilities >= 0.35).astype(int)
+    train_prob = best_model.predict_proba(X_train)[:, 1]
+    best_threshold = find_best_threshold(y_train, train_prob, min_recall=0.90)
+    metrics = evaluate_model(best_model, X_test, y_test, best_threshold)
+    metrics["best_params"] = grid_search.best_params_
+    metrics["feature_names"] = list(X.columns)
 
-    # 6. Performance Analytics Generation
-    acc = accuracy_score(y_test, y_pred_adjusted)
-    recall = recall_score(y_test, y_pred_adjusted)
+    print("\n" + "=" * 60)
+    print("--- Logistic Regression Final Results ---")
+    print(f"Threshold : {metrics['threshold']:.2f}")
+    print(f"Accuracy  : {metrics['accuracy'] * 100:.2f}%")
+    print(f"Precision : {metrics['precision'] * 100:.2f}%")
+    print(f"Recall    : {metrics['recall'] * 100:.2f}%")
+    print(f"F1 Score  : {metrics['f1'] * 100:.2f}%")
+    print(f"F2 Score  : {metrics['f2'] * 100:.2f}%")
+    print(f"ROC-AUC   : {metrics['roc_auc']:.4f}")
+    print(f"PR-AUC    : {metrics['pr_auc']:.4f}")
+    print(f"Confusion : {metrics['confusion_matrix']}")
+    print("=" * 60)
+    print("\nClassification Report:\n", classification_report(
+        y_test,
+        (best_model.predict_proba(X_test)[:, 1] >= best_threshold).astype(int),
+        zero_division=0,
+    ))
 
-    print(f"\n--- Optimized Logistic Regression Metrics ---")
-    print(f"Accuracy: {acc * 100:.2f}% (Overall accuracy rate)")
-    print(f"Recall:   {recall * 100:.2f}% (Catch sensitivity for explicit threats)")
+    print("[*] Saving production model...")
+    joblib.dump(best_model, MODEL_OUTPUT)
 
-    print("\n--- Confusion Matrix (Visual Proof for Examiners) ---")
-    print(confusion_matrix(y_test, y_pred_adjusted))
+    with open(METRICS_OUTPUT, "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2)
 
-    print("\nDetailed Classification Report:")
-    print(classification_report(y_test, y_pred_adjusted))
-
-    # 7. Serializing and saving both the model and the mathematical scaling parameters
-    joblib.dump({'model': model, 'scaler': scaler, 'threshold': 0.35}, model_output)
-    print(f"\nSuccess! Logistic brain and scaler saved at: {model_output}")
+    print(f"[+] Model saved to: {MODEL_OUTPUT}")
+    print(f"[+] Metrics saved to: {METRICS_OUTPUT}\n")
 
 
 if __name__ == "__main__":
-    train_logistic_model()
+    train_logistic()

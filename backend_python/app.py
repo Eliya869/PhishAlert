@@ -14,6 +14,7 @@ MODELS_PATH = os.path.join(BASE_DIR, "models")
 FEEDBACK_FILE = os.path.join(BASE_DIR, "data", "user_feedback.csv")
 DB_PATH = os.path.join(BASE_DIR, "data", "phishalert.db")
 BRANDS_FILE = os.path.join(BASE_DIR, "data", "trusted_brands.txt")
+KEYWORDS_FILE = os.path.join(BASE_DIR, "data", "suspicious_keywords.txt")  # Added Keywords File Path
 
 os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
 
@@ -25,6 +26,37 @@ def load_trusted_brands():
         return ['paypal', 'google', 'amazon', 'microsoft', 'apple', 'netflix', 'facebook']
     with open(BRANDS_FILE, 'r', encoding='utf-8') as f:
         return [line.strip().lower() for line in f if line.strip()]
+
+
+# Dynamic loading of suspicious keywords from external file (Black-Box requirement)
+def load_suspicious_keywords():
+    # Fallback default list in case the file is missing or corrupted
+    default_keywords = [
+        'urgent', 'verify', 'account', 'update', 'password', 'bank', 'pay', 'immediately',
+        'click', 'confirm', 'suspend', 'suspended', 'restricted', 'unusual',
+        'limited', 'expire', 'expired', 'login', 'signin', 'credit', 'debit',
+        'transfer', 'billing', 'invoice', 'payment', 'alert', 'warning',
+        'unauthorized', 'blocked', 'locked'
+    ]
+
+    if not os.path.exists(KEYWORDS_FILE):
+        print(f"[-] Warning: {KEYWORDS_FILE} not found. Using safe default list.")
+        return default_keywords
+
+    try:
+        with open(KEYWORDS_FILE, 'r', encoding='utf-8') as f:
+            # Read line by line, strip whitespace, and convert to lowercase for exact matching
+            words = [line.strip().lower() for line in f if line.strip()]
+
+        if not words:
+            print("[-] Warning: Keywords file is empty. Using default list.")
+            return default_keywords
+
+        return words
+
+    except Exception as e:
+        print(f"[-] Error reading keywords file: {e}")
+        return default_keywords
 
 
 # Load BOTH models for the Ensemble pipeline
@@ -50,13 +82,8 @@ def get_feedback_adjustment(sender):
 
 
 def extract_live_features(body, sender):
-    suspicious_words = [
-        'urgent', 'verify', 'account', 'update', 'password', 'bank', 'pay', 'immediately',
-        'click', 'confirm', 'suspend', 'suspended', 'restricted', 'unusual',
-        'limited', 'expire', 'expired', 'login', 'signin', 'credit', 'debit',
-        'transfer', 'billing', 'invoice', 'payment', 'alert', 'warning',
-        'unauthorized', 'blocked', 'locked'
-    ]
+    # Load keywords dynamically instead of using a hardcoded list
+    suspicious_words = load_suspicious_keywords()
 
     features = {}
     features['has_urls'] = 1 if re.search(r'http[s]?://', body) else 0
@@ -124,7 +151,7 @@ def analyze():
         # Feedback loop modifier
         adjustment = get_feedback_adjustment(sender)
         final_score = max(0, min(100, base_score + adjustment))
-        classification = "Phishing" if final_score >= 50 else "Safe"
+        classification = "Dangerous" if final_score >= 75 else ("Suspicious" if final_score >= 45 else "Safe")
 
         try:
             with sqlite3.connect(DB_PATH) as conn:
@@ -143,7 +170,7 @@ def analyze():
             "base_ai_score": round(base_score, 2),
             "classification": classification,
             "was_adjusted": True if adjustment != 0 else False,
-            "recommendation": "CRITICAL RISK: System Isolation Recommended!" if classification == "Phishing" else "Legitimate Infrastructure.",
+            "recommendation": "CRITICAL RISK: System Isolation Recommended!" if classification == "Dangerous" else "Legitimate Infrastructure.",
             "lev_score": round(lev_dist, 2),
             "ai_prob": round(p_rf * 100, 2),
             "auth_check": "VERIFIED (SPF/DKIM PASS)" if auth_verify == 1 else "UNVERIFIED INFRASTRUCTURE"
@@ -191,4 +218,5 @@ def save_feedback():
 
 if __name__ == '__main__':
     print("--- PhishAlert Advanced Network API Online ---")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Using 127.0.0.1 as it successfully bypassed the firewall connection issues previously
+    app.run(host='127.0.0.1', port=5000, debug=True)
