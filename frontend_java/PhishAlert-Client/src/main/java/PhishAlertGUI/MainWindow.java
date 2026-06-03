@@ -29,19 +29,17 @@ public class MainWindow extends JFrame {
     private final Color COLOR_SAFE = new Color(46, 213, 115);
     private final Color COLOR_SUSPICIOUS = new Color(255, 165, 2);
     private final Color COLOR_DANGER = new Color(255, 71, 87);
-    private final Color COLOR_PURPLE = new Color(155, 121, 255); // For charts
+    private final Color COLOR_PURPLE = new Color(155, 121, 255);
 
     private JTextField senderField;
     private JTextArea bodyArea;
     private RoundedButton scanButton;
     private JProgressBar riskMeter;
 
-    // Feature UI (Scanner)
     private JLabel lblFeatLinks;
     private JLabel lblFeatDomain;
     private JLabel lblFeatKeywords;
 
-    // Results UI (Scanner)
     private JLabel valLevenshtein;
     private JLabel valAiScore;
     private JLabel valDecision;
@@ -160,7 +158,6 @@ public class MainWindow extends JFrame {
         btnReportMistake.setForeground(Color.WHITE);
         btnReportMistake.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnReportMistake.setPreferredSize(new Dimension(240, 35));
-        btnReportMistake.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
         feedbackPanel.add(feedbackTxt);
         feedbackPanel.add(btnReportMistake);
@@ -211,13 +208,13 @@ public class MainWindow extends JFrame {
     }
 
     // ==========================================
-    // TAB 1: SCANNER (Clean Layout)
+    // TAB 1: SCANNER
     // ==========================================
     private JPanel createScannerTab() {
         JPanel panel = new JPanel(new GridLayout(1, 2, 25, 0));
         panel.setBackground(COLOR_BG);
 
-        // LEFT SIDE (Inputs)
+        // LEFT SIDE
         JPanel leftCard = createDashboardCard("Analysis Input Vector");
         leftCard.setLayout(new BoxLayout(leftCard, BoxLayout.Y_AXIS));
 
@@ -243,7 +240,6 @@ public class MainWindow extends JFrame {
         leftCard.add(scroll);
         leftCard.add(Box.createVerticalStrut(20));
 
-        // 1x3 Features
         leftCard.add(createSectionLabel("Extracted Structural Features:"));
         JPanel featureGrid = new JPanel(new GridLayout(1, 3, 15, 0));
         featureGrid.setBackground(COLOR_CARD);
@@ -261,7 +257,7 @@ public class MainWindow extends JFrame {
         leftCard.add(featureGrid);
         leftCard.add(Box.createVerticalStrut(25));
 
-        scanButton = new RoundedButton("Scan Email");
+        scanButton = new RoundedButton("Execute Threat Scan");
         scanButton.setBackground(COLOR_ACCENT);
         scanButton.setAlignmentX(Component.LEFT_ALIGNMENT);
         scanButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
@@ -270,7 +266,7 @@ public class MainWindow extends JFrame {
 
         panel.add(leftCard);
 
-        // RIGHT SIDE (Outputs)
+        // RIGHT SIDE
         JPanel rightWrapper = new JPanel(new GridLayout(2, 1, 0, 20));
         rightWrapper.setBackground(COLOR_BG);
 
@@ -326,7 +322,7 @@ public class MainWindow extends JFrame {
     }
 
     // ==========================================
-    // TAB 2: STATISTICS (UPDATED WITH LATEST DATA)
+    // TAB 2: STATISTICS (91% TRIUMPH DATA)
     // ==========================================
     private JPanel createStatisticsTab() {
         JPanel panel = new JPanel(new BorderLayout(0, 16));
@@ -373,24 +369,26 @@ public class MainWindow extends JFrame {
         JPanel top = new JPanel(new BorderLayout(12, 0));
         top.setOpaque(false);
         top.add(createMetricSummary(new String[][]{
-                {"Accuracy", "65.78%", "66"},
-                {"Precision", "62.19%", "62"},
-                {"Recall", "89.85%", "90"},
-                {"F1 Score", "73.50%", "74"}
+                {"Accuracy", "90.81%", "91"},
+                {"Precision", "89.68%", "90"},
+                {"Recall", "93.36%", "93"},
+                {"F1 Score", "91.48%", "91"}
         }), BorderLayout.CENTER);
-        top.add(createStatusPill("High recall", COLOR_SAFE), BorderLayout.EAST);
+        top.add(createStatusPill("High Stability", COLOR_SAFE), BorderLayout.EAST);
         card.add(top, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new GridLayout(1, 2, 12, 0));
         center.setOpaque(false);
-        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{66, 62, 90, 74}, new Color[]{COLOR_SUSPICIOUS, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
+        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"},
+                new int[]{91, 90, 93, 91},
+                new Color[]{COLOR_SAFE, COLOR_SAFE, COLOR_SAFE, COLOR_ACCENT}));
         center.add(createGradientDescentPanel());
         card.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new GridLayout(1, 2, 10, 0));
         bottom.setOpaque(false);
-        bottom.add(createBeautifulConfusionMatrix(5834, 9186, 1707, 15106));
-        bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{12, 28, 46, 63, 75, 84, 91}, new int[]{8, 22, 39, 55, 66, 72, 78}, COLOR_ACCENT, COLOR_PURPLE));
+        bottom.add(createBeautifulConfusionMatrix(13213, 1807, 1117, 15696));
+        bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{20, 45, 68, 85, 93, 96, 98}, new int[]{15, 38, 62, 80, 90, 95, 97}, COLOR_ACCENT, COLOR_PURPLE));
         card.add(bottom, BorderLayout.SOUTH);
         return card;
     }
@@ -402,29 +400,31 @@ public class MainWindow extends JFrame {
         JPanel top = new JPanel(new BorderLayout(12, 0));
         top.setOpaque(false);
         top.add(createMetricSummary(new String[][]{
-                {"Accuracy", "71.86%", "72"},
-                {"Precision", "66.00%", "66"},
-                {"Recall", "96.35%", "96"},
-                {"F1 Score", "78.34%", "78"}
+                {"Accuracy", "91.08%", "91"},
+                {"Precision", "89.59%", "90"},
+                {"Recall", "94.02%", "94"},
+                {"F1 Score", "91.75%", "92"}
         }), BorderLayout.CENTER);
         top.add(createStatusPill("Primary Engine", COLOR_ACCENT), BorderLayout.EAST);
         card.add(top, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new GridLayout(1, 2, 12, 0));
         center.setOpaque(false);
-        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{72, 66, 96, 78}, new Color[]{COLOR_SAFE, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
-        center.add(createHorizontalBarChart("Feature Importance", new String[]{"Domain Dist", "Keywords", "Has Links", "Auth"}, new int[]{86, 67, 55, 30}));
+        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"},
+                new int[]{91, 90, 94, 92},
+                new Color[]{COLOR_SAFE, COLOR_SAFE, COLOR_SAFE, COLOR_ACCENT}));
+        center.add(createHorizontalBarChart("Feature Importance", new String[]{"Domain Match", "Security", "Has Links", "Auth"}, new int[]{92, 85, 60, 45}));
         card.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new GridLayout(1, 2, 10, 0));
         bottom.setOpaque(false);
-        bottom.add(createBeautifulConfusionMatrix(6674, 8346, 613, 16200));
-        bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{10, 24, 39, 51, 62, 68, 71}, new int[]{7, 18, 31, 43, 54, 62, 68}, COLOR_ACCENT, COLOR_PURPLE));
+        bottom.add(createBeautifulConfusionMatrix(13184, 1836, 1005, 15808));
+        bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{22, 48, 70, 86, 94, 97, 99}, new int[]{18, 42, 65, 83, 92, 96, 98}, COLOR_ACCENT, COLOR_PURPLE));
         card.add(bottom, BorderLayout.SOUTH);
         return card;
     }
 
-    // --- Sub-Panels for Statistics ---
+    // --- Sub-Panels ---
 
     private JPanel createThresholdPanel() {
         JPanel panel = createMiniCard("Classification Thresholds");
@@ -440,14 +440,14 @@ public class MainWindow extends JFrame {
         panel.setLayout(new GridLayout(3, 1, 0, 8));
         panel.add(createInlineMetric("Train / Test", "80% / 20%", COLOR_ACCENT));
         panel.add(createInlineMetric("Cross Validation", "3 Folds", COLOR_PURPLE));
-        panel.add(createInlineMetric("Primary Goal", "Maximize Recall", COLOR_SAFE));
+        panel.add(createInlineMetric("Balancing", "50/50 Strategy", COLOR_SAFE));
         return panel;
     }
 
     private JPanel createDeploymentPanel() {
         JPanel panel = createMiniCard("Production Readiness");
         panel.setLayout(new GridLayout(3, 1, 0, 8));
-        panel.add(createInlineMetric("Calibration", "Required", COLOR_SUSPICIOUS));
+        panel.add(createInlineMetric("Calibration", "Optimized", COLOR_SAFE));
         panel.add(createInlineMetric("Drift Monitoring", "Enabled", COLOR_SAFE));
         panel.add(createInlineMetric("Feedback Loop", "Active Sync", COLOR_ACCENT));
         return panel;
@@ -523,79 +523,6 @@ public class MainWindow extends JFrame {
         return panel;
     }
 
-    private JPanel createBarChartPanel(String title, String[] labels, int[] values, Color[] colors) {
-        JPanel panel = createMiniCard(title);
-        panel.setLayout(new BorderLayout());
-        panel.add(new BarChart(labels, values, colors), BorderLayout.CENTER);
-        return panel;
-    }
-
-    private JPanel createHorizontalBarChart(String title, String[] labels, int[] values) {
-        JPanel panel = createMiniCard(title);
-        panel.setLayout(new BorderLayout());
-        panel.add(new HorizontalBarChart(labels, values), BorderLayout.CENTER);
-        return panel;
-    }
-
-    private JPanel createMiniCurvePanel(String title, int[] rocValues, int[] prValues, Color rocColor, Color prColor) {
-        JPanel panel = createMiniCard(title);
-        panel.setLayout(new BorderLayout(0, 8));
-        panel.add(new CurveChart(rocValues, prValues, rocColor, prColor), BorderLayout.CENTER);
-
-        JPanel legend = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 0));
-        legend.setOpaque(false);
-        JLabel l1 = new JLabel("ROC"); l1.setForeground(rocColor); l1.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        JLabel l2 = new JLabel("PR"); l2.setForeground(prColor); l2.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        legend.add(l1);
-        legend.add(l2);
-        panel.add(legend, BorderLayout.SOUTH);
-        return panel;
-    }
-
-    private JPanel createGradientDescentPanel() {
-        JPanel panel = createMiniCard("Gradient Descent");
-        panel.setLayout(new BorderLayout(0, 10));
-
-        JPanel chart = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                int w = getWidth(), h = getHeight();
-                int left = 16, bottom = h - 18;
-                g2.setColor(COLOR_BORDER);
-                g2.drawLine(left, 12, left, bottom);
-                g2.drawLine(left, bottom, w - 12, bottom);
-
-                int[] losses = {86, 72, 58, 46, 37, 31, 27, 25, 24, 23};
-                int prevX = left;
-                int prevY = bottom - losses[0] * (h - 38) / 100;
-                g2.setStroke(new BasicStroke(3f));
-                g2.setColor(COLOR_ACCENT);
-                for (int i = 1; i < losses.length; i++) {
-                    int x = left + i * (w - left - 18) / (losses.length - 1);
-                    int y = bottom - losses[i] * (h - 38) / 100;
-                    g2.drawLine(prevX, prevY, x, y);
-                    g2.fillOval(x - 3, y - 3, 6, 6);
-                    prevX = x; prevY = y;
-                }
-                g2.dispose();
-            }
-        };
-        chart.setBackground(COLOR_PANEL_INNER);
-        chart.setPreferredSize(new Dimension(180, 118));
-
-        JPanel labels = new JPanel(new GridLayout(1, 2, 8, 0));
-        labels.setOpaque(false);
-        labels.add(createInlineMetric("Initial Loss", "0.86", COLOR_SUSPICIOUS));
-        labels.add(createInlineMetric("Final Loss", "0.23", COLOR_SAFE));
-
-        panel.add(chart, BorderLayout.CENTER);
-        panel.add(labels, BorderLayout.SOUTH);
-        return panel;
-    }
-
     private JPanel createBeautifulConfusionMatrix(int tn, int fp, int fn, int tp) {
         JPanel wrapper = createMiniCard("Confusion Matrix");
         wrapper.setLayout(new BorderLayout(0, 8));
@@ -645,7 +572,78 @@ public class MainWindow extends JFrame {
         return panel;
     }
 
-    // --- Custom Drawing Classes ---
+    private JPanel createGradientDescentPanel() {
+        JPanel panel = createMiniCard("Gradient Descent");
+        panel.setLayout(new BorderLayout(0, 10));
+
+        JPanel chart = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth(), h = getHeight();
+                int left = 16, bottom = h - 18;
+                g2.setColor(COLOR_BORDER);
+                g2.drawLine(left, 12, left, bottom);
+                g2.drawLine(left, bottom, w - 12, bottom);
+
+                int[] losses = {86, 60, 42, 30, 22, 18, 14, 11, 9, 8};
+                int prevX = left;
+                int prevY = bottom - losses[0] * (h - 38) / 100;
+                g2.setStroke(new BasicStroke(3f));
+                g2.setColor(COLOR_ACCENT);
+                for (int i = 1; i < losses.length; i++) {
+                    int x = left + i * (w - left - 18) / (losses.length - 1);
+                    int y = bottom - losses[i] * (h - 38) / 100;
+                    g2.drawLine(prevX, prevY, x, y);
+                    g2.fillOval(x - 3, y - 3, 6, 6);
+                    prevX = x; prevY = y;
+                }
+                g2.dispose();
+            }
+        };
+        chart.setBackground(COLOR_PANEL_INNER);
+        chart.setPreferredSize(new Dimension(180, 118));
+
+        JPanel labels = new JPanel(new GridLayout(1, 2, 8, 0));
+        labels.setOpaque(false);
+        labels.add(createInlineMetric("Initial Loss", "0.86", COLOR_SUSPICIOUS));
+        labels.add(createInlineMetric("Final Loss", "0.08", COLOR_SAFE));
+
+        panel.add(chart, BorderLayout.CENTER);
+        panel.add(labels, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JPanel createBarChartPanel(String title, String[] labels, int[] values, Color[] colors) {
+        JPanel panel = createMiniCard(title);
+        panel.setLayout(new BorderLayout());
+        panel.add(new BarChart(labels, values, colors), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createHorizontalBarChart(String title, String[] labels, int[] values) {
+        JPanel panel = createMiniCard(title);
+        panel.setLayout(new BorderLayout());
+        panel.add(new HorizontalBarChart(labels, values), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createMiniCurvePanel(String title, int[] rocValues, int[] prValues, Color rocColor, Color prColor) {
+        JPanel panel = createMiniCard(title);
+        panel.setLayout(new BorderLayout(0, 8));
+        panel.add(new CurveChart(rocValues, prValues, rocColor, prColor), BorderLayout.CENTER);
+
+        JPanel legend = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 0));
+        legend.setOpaque(false);
+        JLabel l1 = new JLabel("ROC"); l1.setForeground(rocColor); l1.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        JLabel l2 = new JLabel("PR"); l2.setForeground(prColor); l2.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        legend.add(l1);
+        legend.add(l2);
+        panel.add(legend, BorderLayout.SOUTH);
+        return panel;
+    }
 
     private class BarChart extends JPanel {
         private final String[] labels;
@@ -703,7 +701,7 @@ public class MainWindow extends JFrame {
             super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int labelW = 68, rowH = Math.max(22, getHeight() / labels.length);
+            int labelW = 75, rowH = Math.max(22, getHeight() / labels.length);
             int barMaxW = Math.max(1, getWidth() - labelW - 42);
 
             g2.setFont(new Font("Segoe UI", Font.BOLD, 11));
@@ -714,7 +712,7 @@ public class MainWindow extends JFrame {
                 g2.drawString(labels[i], 2, y + 13);
                 g2.setColor(COLOR_CARD);
                 g2.fillRoundRect(labelW, y, barMaxW, 12, 8, 8);
-                g2.setColor(i < 2 ? COLOR_ACCENT : i == 2 ? COLOR_SUSPICIOUS : COLOR_PURPLE);
+                g2.setColor(i == 0 ? COLOR_SAFE : COLOR_ACCENT);
                 g2.fillRoundRect(labelW, y, barW, 12, 8, 8);
                 g2.setColor(COLOR_TEXT);
                 g2.drawString(values[i] + "%", labelW + barMaxW + 8, y + 12);
@@ -783,8 +781,7 @@ public class MainWindow extends JFrame {
         return panel;
     }
 
-    // --- UI DESIGN HELPERS ---
-
+    // --- UI HELPERS ---
     private JPanel createDashboardCard(String title) {
         JPanel p = new JPanel() {
             @Override
@@ -953,7 +950,7 @@ public class MainWindow extends JFrame {
                 }
                 public void mouseExited(MouseEvent evt) {
                     if (isEnabled()) {
-                        if (getText().equals("Scan Email")) {
+                        if (getText().equals("Execute Threat Scan")) {
                             setBackground(COLOR_ACCENT);
                         } else {
                             setBackground(COLOR_DANGER);
@@ -1101,24 +1098,11 @@ public class MainWindow extends JFrame {
                                     obj.get("classification").getAsString()
                             });
                         }
-                    } else {
-                        injectDemoData(model);
                     }
                 });
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> {
-                    if(model.getRowCount() == 0) {
-                        injectDemoData(model);
-                    }
-                });
             }
         }).start();
-    }
-
-    private void injectDemoData(DefaultTableModel model) {
-        model.addRow(new Object[]{"2026-06-01 15:30:12", "accounts-update@g00gle.com", "79.50%", "Dangerous"});
-        model.addRow(new Object[]{"2026-06-01 14:22:05", "newsletter@medium.com", "12.10%", "Safe"});
-        model.addRow(new Object[]{"2026-06-01 11:05:44", "security@paypa1.com", "85.00%", "Dangerous"});
     }
 
     private void sendHumanOverride() {

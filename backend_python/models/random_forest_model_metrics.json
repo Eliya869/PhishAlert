@@ -1,88 +1,18 @@
 {
-  "threshold": 0.47,
-  "accuracy": 0.7186,
-  "precision": 0.66,
-  "recall": 0.9635,
-  "f1": 0.7834,
-  "roc_auc": 0.8265,
-  "pr_auc": 0.8163,
+  "threshold": 0.62,
+  "accuracy": 0.9112,
+  "precision": 0.9012,
+  "recall": 0.9343,
+  "f1": 0.9174,
+  "roc_auc": 0.969,
+  "pr_auc": 0.9679,
   "confusion_matrix": {
-    "tn": 6674,
-    "fp": 8346,
-    "fn": 613,
-    "tp": 16200
-  },
-  "classification_report": {
-    "0": {
-      "precision": 0.9158775902291753,
-      "recall": 0.44434087882822904,
-      "f1-score": 0.598377191016273,
-      "support": 15020.0
-    },
-    "1": {
-      "precision": 0.659985333659252,
-      "recall": 0.9635401177660144,
-      "f1-score": 0.7833845112309292,
-      "support": 16813.0
-    },
-    "accuracy": 0.7185624980366286,
-    "macro avg": {
-      "precision": 0.7879314619442137,
-      "recall": 0.7039404982971218,
-      "f1-score": 0.6908808511236011,
-      "support": 31833.0
-    },
-    "weighted avg": {
-      "precision": 0.7807248710475047,
-      "recall": 0.7185624980366286,
-      "f1-score": 0.6960911380136974,
-      "support": 31833.0
-    }
-  },
-  "best_params": {
-    "model__n_estimators": 300,
-    "model__min_samples_split": 5,
-    "model__min_samples_leaf": 1,
-    "model__max_features": "log2",
-    "model__max_depth": 24,
-    "model__class_weight": "balanced"
+    "tn": 13298,
+    "fp": 1722,
+    "fn": 1105,
+    "tp": 15708
   },
   "feature_names": [
-    "has_urls",
-    "levenshtein_dist",
-    "auth_verify",
-    "keyword_count",
-    "keyword_density",
-    "body_length",
-    "subject_length",
-    "word_count",
-    "avg_word_length",
-    "uppercase_ratio",
-    "digit_count",
-    "exclamation_count",
-    "question_count",
-    "special_char_count",
-    "body_has_html",
-    "subject_has_re",
-    "subject_has_fwd",
-    "url_count",
-    "has_https_url",
-    "has_ip_url",
-    "has_at_symbol_url",
-    "has_suspicious_tld",
-    "url_avg_length",
-    "url_max_length",
-    "url_dot_count",
-    "url_dash_count",
-    "url_digit_count",
-    "sender_domain_length",
-    "sender_has_digits",
-    "sender_has_dash",
-    "sender_subdomain_count",
-    "brand_in_sender",
-    "brand_in_subject",
-    "brand_in_body",
-    "brand_mismatch",
     "word_urgent",
     "word_verify",
     "word_account",
@@ -112,68 +42,47 @@
     "word_warning",
     "word_unauthorized",
     "word_blocked",
-    "word_locked"
+    "word_locked",
+    "keyword_count",
+    "has_urls",
+    "levenshtein_dist",
+    "auth_verify",
+    "text_phish_score"
   ],
-  "feature_importance": [
-    {
-      "feature": "special_char_count",
-      "importance": 0.10067
-    },
-    {
-      "feature": "digit_count",
-      "importance": 0.07292
-    },
-    {
-      "feature": "body_length",
-      "importance": 0.06892
-    },
-    {
-      "feature": "exclamation_count",
-      "importance": 0.06344
-    },
-    {
-      "feature": "avg_word_length",
-      "importance": 0.06287
-    },
-    {
-      "feature": "word_count",
-      "importance": 0.06187
-    },
-    {
-      "feature": "uppercase_ratio",
-      "importance": 0.05645
-    },
-    {
-      "feature": "subject_length",
-      "importance": 0.05533
-    },
-    {
-      "feature": "subject_has_re",
-      "importance": 0.04847
-    },
-    {
-      "feature": "sender_domain_length",
-      "importance": 0.03828
-    },
-    {
-      "feature": "url_max_length",
-      "importance": 0.03628
-    },
-    {
-      "feature": "url_dot_count",
-      "importance": 0.03307
-    },
-    {
-      "feature": "keyword_density",
-      "importance": 0.03272
-    },
-    {
-      "feature": "url_count",
-      "importance": 0.03012
-    },
-    {
-      "feature": "url_avg_length",
-      "importance": 0.02895
-    }
+  "numeric_features": [
+    "word_urgent",
+    "word_verify",
+    "word_account",
+    "word_update",
+    "word_password",
+    "word_bank",
+    "word_pay",
+    "word_immediately",
+    "word_click",
+    "word_confirm",
+    "word_suspend",
+    "word_suspended",
+    "word_restricted",
+    "word_unusual",
+    "word_limited",
+    "word_expire",
+    "word_expired",
+    "word_login",
+    "word_signin",
+    "word_credit",
+    "word_debit",
+    "word_transfer",
+    "word_billing",
+    "word_invoice",
+    "word_payment",
+    "word_alert",
+    "word_warning",
+    "word_unauthorized",
+    "word_blocked",
+    "word_locked",
+    "keyword_count",
+    "has_urls",
+    "levenshtein_dist",
+    "auth_verify"
   ]
 }

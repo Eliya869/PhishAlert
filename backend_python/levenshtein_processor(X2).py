@@ -4,111 +4,95 @@ import re
 from difflib import SequenceMatcher
 
 """
-Refined logic for visual deception detection and structural similarity.
-Full implementation with expanded brands and performance optimizations.
+PhishAlert - Homoglyph & Typosquatting Detection
+------------------------------------------------
+Calculates Levenshtein distances against dynamically loaded trusted brands
+to detect visual deception attacks (e.g., amaz0n vs amazon).
 """
 
 # --- Configuration & File Paths ---
-# Ensure these paths match your local project structure
 DATA_PATH = r"C:\Users\eliya\Desktop\PhishProject\backend_python\data"
 INPUT_FILE = os.path.join(DATA_PATH, "processed_data.csv")
 OUTPUT_FILE = os.path.join(DATA_PATH, "final_features.csv")
+BRANDS_FILE = os.path.join(DATA_PATH, "trusted_brands.txt")
 
-#list of legitimate brands (Targeted by phishers)
-TOP_BRANDS = [
-    'paypal', 'google', 'microsoft', 'amazon', 'apple', 'facebook', 'linkedin',
-    'netflix', 'bankofamerica', 'ebay', 'instagram', 'whatsapp', 'gmail',
-    'twitter', 'yahoo', 'dropbox', 'steam', 'discord', 'chase',
-    'icloud', 'adobe', 'spotify', 'roblox', 'binance', 'coinbase', 'slack'
-]
-
+def load_trusted_brands():
+    """Loads target protection brands dynamically from a text file."""
+    if not os.path.exists(BRANDS_FILE):
+        return []
+    with open(BRANDS_FILE, "r", encoding="utf-8") as file:
+        return [line.strip().lower() for line in file if line.strip()]
 
 def normalize_homoglyphs(text):
-    """
-    Standardizes look-alike characters using an optimized translation table.
-    Converts 'paypa1' -> 'paypal', 'amaz0n' -> 'amazon', etc.
-    """
-    # Create a translation table for single-character replacements
+    """Standardizes look-alike characters to expose spoofing attempts."""
     homoglyph_map = str.maketrans({
         '0': 'o', '1': 'l', '8': 'b', 'i': 'l', '!': 'l',
         '@': 'a', '5': 's', '3': 'e'
     })
-
-    # Handle common multi-character visual tricks first
     text = text.lower().replace('vv', 'w').replace('rn', 'm')
-
-    # Apply the bulk translation for speed
     return text.translate(homoglyph_map)
 
-
 def get_brand_part(domain):
-    """Extracts the primary brand segment from a domain string (e.g., 'paypa1' from 'paypa1.com')"""
+    """Isolates the primary SLD (Second-Level Domain) from a domain string."""
     if not domain: return ""
     return domain.split('.')[0].lower()
 
-
-def calculate_smart_score(extracted_domain):
+def calculate_smart_score(extracted_domain, trusted_brands):
     """
-    Logic:
-    - 1.0: Safe (Identical to a protected brand)
-    - 0.0: High Risk (Homoglyph spoofing detected)
-    - 0.1: Suspicious (High structural similarity / Typosquatting)
-    - 0.5: Neutral (No match in the brand protection list)
+    Evaluates brand impersonation risks:
+    1.0: Safe / Authentic
+    0.0: High Risk (Homoglyph spoof)
+    0.1: Suspicious (Typosquatting)
+    0.5: Neutral
     """
-    if not extracted_domain:
+    if not extracted_domain or not trusted_brands:
         return 0.5
 
     current_brand = get_brand_part(extracted_domain)
     normalized_brand = normalize_homoglyphs(current_brand)
 
-    for target in TOP_BRANDS:
-        # Check for visual deception (Homoglyph Attack)
-        # If it matches after normalization but was different before, it's a spoof.
+    for target in trusted_brands:
+        # Homoglyph Attack Detection
         if normalized_brand == target and current_brand != target:
             return 0.0
-
-            # Legitimate brand verification
+        # Legitimate Authentication
         if current_brand == target:
             return 1.0
-
-        # Structural Similarity: SequenceMatcher provides the Levenshtein-based ratio
+        # Typosquatting Detection (High similarity but not identical)
         similarity = SequenceMatcher(None, current_brand, target).ratio()
-
-        # Threshold for Typosquatting: Similarity > 75% is usually a phishing attempt
         if 0.85 <= similarity < 1.0:
             return 0.1
 
     return 0.5
 
 def process_levenshtein():
-    """Main function to batch-process the phishing dataset."""
+    """Batch-processes the dataset to calculate deception matrices."""
     if not os.path.exists(INPUT_FILE):
-        print(f"Error: {INPUT_FILE} not found. Please check your data directory.")
+        print(f"[-] Error: {INPUT_FILE} not found.")
         return
 
-    print("--- Starting Levenshtein Processor ---")
+    print("[*] Starting Levenshtein Processor...")
     df = pd.read_csv(INPUT_FILE, low_memory=False)
+    trusted_brands = load_trusted_brands()
 
     def extract_best_domain(row):
-        """Helper to extract domain from sender email or body text."""
+        """Extracts the operational domain from the sender or text bodies."""
         sender = str(row.get('sender', ''))
         match = re.search(r'@([\w.\-]+)', sender)
         if match: return match.group(1).lower()
 
-        # Fallback to URLs in the text if sender is missing
         text = str(row.get('text_combined', ''))
         url_match = re.search(r'https?://([\w.\-]+)', text)
         return url_match.group(1).lower() if url_match else ""
 
-    print("Processing domains and calculating danger levels...")
+    print("[*] Calculating structural similarity and homoglyph thresholds...")
     df['extracted_domain'] = df.apply(extract_best_domain, axis=1)
-    df['levenshtein_dist'] = df['extracted_domain'].apply(calculate_smart_score)
+    df['levenshtein_dist'] = df['extracted_domain'].apply(lambda d: calculate_smart_score(d, trusted_brands))
 
-    # Cleanup and Export
+    # Cleanup
     df.drop(columns=['extracted_domain'], inplace=True)
     df.to_csv(OUTPUT_FILE, index=False)
-    print(f"Success! Features finalized and saved to: {OUTPUT_FILE}")
-
+    print(f"[+] Success! Features finalized and saved to: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     process_levenshtein()

@@ -17,57 +17,46 @@ MODELS_PATH = os.path.join(BASE_DIR, "models")
 DATA_PATH = os.path.join(BASE_DIR, "data")
 FEEDBACK_FILE = os.path.join(DATA_PATH, "user_feedback.csv")
 DB_PATH = os.path.join(DATA_PATH, "phishalert.db")
+
+# External Configuration Files
 BRANDS_FILE = os.path.join(DATA_PATH, "trusted_brands.txt")
 KEYWORDS_FILE = os.path.join(DATA_PATH, "suspicious_keywords.txt")
+TLDS_FILE = os.path.join(DATA_PATH, "suspicious_tlds.txt")
 
 os.makedirs(DATA_PATH, exist_ok=True)
 
-# --- Regex & Constants ---
-SUSPICIOUS_TLDS = {
-    "xyz", "top", "click", "link", "work", "zip", "mov", "ru", "cn", "tk",
-    "gq", "ml", "cf", "ga", "rest", "support", "accountant", "country"
-}
+# --- Regex Patterns ---
 URL_REGEX = re.compile(r"(https?://[^\s\"'<>]+|www\.[^\s\"'<>]+)", re.IGNORECASE)
 IP_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 
 
-# --- Dynamic Loading ---
-def load_trusted_brands():
-    if not os.path.exists(BRANDS_FILE):
-        return ['paypal', 'google', 'amazon', 'microsoft', 'apple', 'netflix', 'facebook']
-    with open(BRANDS_FILE, 'r', encoding='utf-8') as f:
-        return [line.strip().lower() for line in f if line.strip()]
-
-
-def load_suspicious_keywords():
-    default_keywords = [
-        'urgent', 'verify', 'account', 'update', 'password', 'bank', 'pay', 'immediately',
-        'click', 'confirm', 'suspend', 'suspended', 'restricted', 'unusual',
-        'limited', 'expire', 'expired', 'login', 'signin', 'credit', 'debit',
-        'transfer', 'billing', 'invoice', 'payment', 'alert', 'warning',
-        'unauthorized', 'blocked', 'locked'
-    ]
-    if not os.path.exists(KEYWORDS_FILE):
-        return default_keywords
+# --- Dynamic File Loading Functions ---
+def load_config_file(filepath):
+    """Loads a list of strings from an external text file."""
+    if not os.path.exists(filepath):
+        return []
     try:
-        with open(KEYWORDS_FILE, 'r', encoding='utf-8') as f:
-            words = [line.strip().lower() for line in f if line.strip()]
-        return words if words else default_keywords
-    except Exception:
-        return default_keywords
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return [line.strip().lower() for line in f if line.strip()]
+    except Exception as e:
+        print(f"[-] Error loading {filepath}: {e}")
+        return []
 
 
 # --- Load Models & Expected Features ---
 print("[*] Booting Machine Learning Pipelines...")
 
-# 🚀 התיקון החכם: השרת יודע לחלץ את המודל מתוך מילון או להשתמש בו ישירות
+# Load Logistic Regression Model
 raw_log = joblib.load(os.path.join(MODELS_PATH, "logistic_model.pkl"))
 logistic_model = raw_log["model"] if isinstance(raw_log, dict) else raw_log
+LOGISTIC_FEATURES = raw_log.get("feature_names", []) if isinstance(raw_log, dict) else []
 
+# Load Random Forest Model
 raw_rf = joblib.load(os.path.join(MODELS_PATH, "random_forest_model.pkl"))
 rf_model = raw_rf["model"] if isinstance(raw_rf, dict) else raw_rf
+RF_TEXT_MODEL = raw_rf.get("text_model") if isinstance(raw_rf, dict) else None
 
-# טעינת שמות העמודות כדי לסדר למודל את הנתונים בול כמו שהוא רגיל
+# Load Feature Names for Random Forest
 MODEL_FEATURES = []
 rf_metrics_path = os.path.join(MODELS_PATH, "random_forest_model_metrics.json")
 if os.path.exists(rf_metrics_path):
@@ -78,22 +67,29 @@ if os.path.exists(rf_metrics_path):
     except Exception:
         pass
 
-# גיבוי: אם לא הצלחנו לקרוא מה-JSON, נחלץ מתוך קובץ ה-PKL אם הוא נשמר כמילון
 if not MODEL_FEATURES:
     if isinstance(raw_rf, dict) and "feature_names" in raw_rf:
         MODEL_FEATURES = raw_rf["feature_names"]
     else:
         print("[-] WARNING: Could not load feature names. App may crash during scan.")
 
+if not LOGISTIC_FEATURES:
+    try:
+        LOGISTIC_FEATURES = list(logistic_model.feature_names_in_)
+    except Exception:
+        LOGISTIC_FEATURES = MODEL_FEATURES
 
-# --- Helpers for Feature Extraction ---
+
+# --- Feature Extraction Helpers ---
 def normalize_url(url):
+    """Ensures URL has a standard scheme for accurate parsing."""
     if url.lower().startswith("www."):
         return "http://" + url
     return url
 
 
 def get_domain(url):
+    """Extracts the network location (domain) from a URL."""
     try:
         parsed = urlparse(normalize_url(url))
         return parsed.netloc.lower()
@@ -102,15 +98,17 @@ def get_domain(url):
 
 
 def get_tld(domain):
+    """Extracts the Top-Level Domain (TLD)."""
     domain = domain.split(":")[0]
     parts = [part for part in domain.split(".") if part]
     return parts[-1] if len(parts) >= 2 else ""
 
 
 def extract_live_features(body, sender, subject=""):
+    """Transforms raw email text into an aligned feature vector for the ML models."""
     features = {}
 
-    # Text Analysis
+    # 1. Text & Structural Analysis
     body_words = re.findall(r"\b\w+\b", body)
     word_count = len(body_words)
     text_combined = f"{body} {subject}"
@@ -128,8 +126,8 @@ def extract_live_features(body, sender, subject=""):
     features['subject_has_re'] = 1 if re.search(r'^\s*re:', subject, re.IGNORECASE) else 0
     features['subject_has_fwd'] = 1 if re.search(r'^\s*(?:fwd|fw):', subject, re.IGNORECASE) else 0
 
-    # Keyword Analysis
-    suspicious_words = load_suspicious_keywords()
+    # 2. Dynamic Keyword Analysis
+    suspicious_words = load_config_file(KEYWORDS_FILE)
     keyword_count = 0
     for word in suspicious_words:
         val = 1 if word in body.lower() else 0
@@ -139,19 +137,21 @@ def extract_live_features(body, sender, subject=""):
     features['keyword_count'] = keyword_count
     features['keyword_density'] = keyword_count / max(1, word_count)
 
-    # URL Analysis
+    # 3. Dynamic URL Analysis
     urls = URL_REGEX.findall(text_combined)
     features['has_urls'] = 1 if urls else 0
+    suspicious_tlds = set(load_config_file(TLDS_FILE))
 
     if urls:
         domains = [get_domain(u) for u in urls]
         lengths = [len(u) for u in urls]
         all_urls_text = " ".join(urls)
+
         features['url_count'] = len(urls)
         features['has_https_url'] = 1 if any(u.lower().startswith("https://") for u in urls) else 0
         features['has_ip_url'] = 1 if any(IP_REGEX.match(d.split(":")[0]) for d in domains) else 0
         features['has_at_symbol_url'] = 1 if any("@" in u for u in urls) else 0
-        features['has_suspicious_tld'] = 1 if any(get_tld(d) in SUSPICIOUS_TLDS for d in domains) else 0
+        features['has_suspicious_tld'] = 1 if any(get_tld(d) in suspicious_tlds for d in domains) else 0
         features['url_avg_length'] = float(np.mean(lengths))
         features['url_max_length'] = int(max(lengths))
         features['url_dot_count'] = all_urls_text.count('.')
@@ -162,7 +162,7 @@ def extract_live_features(body, sender, subject=""):
                   'url_avg_length', 'url_max_length', 'url_dot_count', 'url_dash_count', 'url_digit_count']:
             features[k] = 0
 
-    # Sender & Brand Analysis
+    # 4. Sender & Dynamic Brand Analysis
     sender_domain_match = re.search(r'@([\w.\-]+)', sender.lower())
     domain = sender_domain_match.group(1) if sender_domain_match else ""
 
@@ -171,7 +171,7 @@ def extract_live_features(body, sender, subject=""):
     features['sender_has_dash'] = 1 if '-' in domain else 0
     features['sender_subdomain_count'] = max(0, domain.count('.') - 1)
 
-    trusted_brands = load_trusted_brands()
+    trusted_brands = load_config_file(BRANDS_FILE)
     brand_in_sender = 0
     brand_in_subject = 0
     brand_in_body = 0
@@ -187,6 +187,7 @@ def extract_live_features(body, sender, subject=""):
     features['brand_in_body'] = brand_in_body
     features['brand_mismatch'] = 1 if (brand_in_body == 1 and brand_in_sender == 0) else 0
 
+    # 5. Distance & Authentication Check
     lev_score = 0.5
     if domain:
         scores = []
@@ -200,14 +201,20 @@ def extract_live_features(body, sender, subject=""):
     features['levenshtein_dist'] = lev_score
     features['auth_verify'] = 1 if re.search(r'spf=pass|dkim=pass', body.lower()) else 0
 
-    # סידור העמודות בדיוק בסדר שהמודל התאמן עליו
-    df_features = pd.DataFrame([features])
-    df_aligned = df_features.reindex(columns=MODEL_FEATURES, fill_value=0)
+    # 6. Feature Alignment & Text Model Evaluation
+    features['text_for_model'] = f"{sender} {subject} {body}"
+    if RF_TEXT_MODEL is not None:
+        features['text_phish_score'] = RF_TEXT_MODEL.predict_proba(pd.Series([features['text_for_model']]))[0][1]
 
-    return df_aligned, domain, lev_score, keyword_count, features['has_urls'], features['auth_verify']
+    df_features = pd.DataFrame([features])
+    df_rf = df_features.reindex(columns=MODEL_FEATURES, fill_value=0)
+    df_logistic = df_features.reindex(columns=LOGISTIC_FEATURES, fill_value=0)
+
+    return df_rf, df_logistic, domain, lev_score, keyword_count, features['has_urls'], features['auth_verify']
 
 
 def get_feedback_adjustment(sender):
+    """Adjusts predictions based on historical SOC analyst feedback."""
     if not os.path.exists(FEEDBACK_FILE):
         return 0
     try:
@@ -224,6 +231,7 @@ def get_feedback_adjustment(sender):
         return 0
 
 
+# --- API Endpoints ---
 @app.route('/analyze', methods=['POST'])
 def analyze():
     try:
@@ -235,21 +243,23 @@ def analyze():
         if not body:
             return jsonify({"status": "error", "error": "Email body is missing"}), 400
 
-        # Extract features mapped exactly to what the models expect
-        df_vector, domain, lev_dist, key_count, has_urls, auth_verify = extract_live_features(body, sender, subject)
+        # Feature Extraction
+        df_rf_vector, df_logistic_vector, domain, lev_dist, key_count, has_urls, auth_verify = extract_live_features(
+            body, sender, subject)
 
-        # Evaluate Models using the pipelines directly
-        p_log = logistic_model.predict_proba(df_vector)[0][1]
-        p_rf = rf_model.predict_proba(df_vector)[0][1]
+        # Multi-Model Evaluation
+        p_log = logistic_model.predict_proba(df_logistic_vector)[0][1]
+        p_rf = rf_model.predict_proba(df_rf_vector)[0][1]
 
-        # Soft Voting Ensemble weight balance (70% RF, 30% Logistic)
-        base_score = (p_rf * 0.7 + p_log * 0.3) * 100
-
-        # Feedback loop modifier
+        # Ensemble Weighted Scoring
+        base_score = (p_log * 0.8 + p_rf * 0.2) * 100
         adjustment = get_feedback_adjustment(sender)
         final_score = max(0, min(100, base_score + adjustment))
+
+        # Categorical Classification
         classification = "Dangerous" if final_score >= 75 else ("Suspicious" if final_score >= 45 else "Safe")
 
+        # Telemetry Logging
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -293,6 +303,7 @@ def analyze():
 
 @app.route('/history', methods=['GET'])
 def get_history():
+    """Retrieves recent scan telemetry for the dashboard."""
     try:
         if not os.path.exists(DB_PATH):
             return jsonify([])
@@ -301,8 +312,7 @@ def get_history():
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC LIMIT 100")
-            rows = cursor.fetchall()
-            return jsonify([dict(row) for row in rows])
+            return jsonify([dict(row) for row in cursor.fetchall()])
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
