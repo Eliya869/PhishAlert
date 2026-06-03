@@ -1,85 +1,15 @@
 {
-  "threshold": 0.21,
-  "accuracy": 0.5483,
-  "precision": 0.5393,
-  "recall": 0.9935,
-  "f1": 0.6991,
-  "f2": 0.8503,
-  "roc_auc": 0.5969,
-  "pr_auc": 0.6147,
+  "threshold": 0.5,
+  "accuracy": 0.6578,
+  "precision": 0.6219,
+  "recall": 0.8985,
+  "f1": 0.735,
+  "roc_auc": 0.7448,
+  "pr_auc": 0.7584,
   "confusion_matrix": {
-    "tn": 751,
-    "fp": 14269,
-    "fn": 110,
-    "tp": 16703
-  },
-  "classification_report": {
-    "0": {
-      "precision": 0.8722415795586528,
-      "recall": 0.05,
-      "f1-score": 0.09457842705119325,
-      "support": 15020.0
-    },
-    "1": {
-      "precision": 0.5392935554694562,
-      "recall": 0.9934574436447987,
-      "f1-score": 0.6990896724913676,
-      "support": 16813.0
-    },
-    "accuracy": 0.5482989350673829,
-    "macro avg": {
-      "precision": 0.7057675675140545,
-      "recall": 0.5217287218223994,
-      "f1-score": 0.3968340497712804,
-      "support": 31833.0
-    },
-    "weighted avg": {
-      "precision": 0.6963908859698719,
-      "recall": 0.5482989350673829,
-      "f1-score": 0.4138586573023681,
-      "support": 31833.0
-    }
-  },
-  "best_params": {
-    "model__C": 0.01,
-    "model__class_weight": null,
-    "model__penalty": "l2",
-    "model__solver": "liblinear"
-  },
-  "feature_names": [
-    "has_urls",
-    "levenshtein_dist",
-    "auth_verify",
-    "keyword_count",
-    "word_urgent",
-    "word_verify",
-    "word_account",
-    "word_update",
-    "word_password",
-    "word_bank",
-    "word_pay",
-    "word_immediately",
-    "word_click",
-    "word_confirm",
-    "word_suspend",
-    "word_suspended",
-    "word_restricted",
-    "word_unusual",
-    "word_limited",
-    "word_expire",
-    "word_expired",
-    "word_login",
-    "word_signin",
-    "word_credit",
-    "word_debit",
-    "word_transfer",
-    "word_billing",
-    "word_invoice",
-    "word_payment",
-    "word_alert",
-    "word_warning",
-    "word_unauthorized",
-    "word_blocked",
-    "word_locked"
-  ]
+    "tn": 5834,
+    "fp": 9186,
+    "fn": 1707,
+    "tp": 15106
+  }
 }

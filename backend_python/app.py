@@ -1,36 +1,45 @@
 import sqlite3
 import os
 import re
+import json
 import joblib
+import numpy as np
 import pandas as pd
 from flask import Flask, request, jsonify
 from difflib import SequenceMatcher
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
-# --- Configuration & Model Loading ---
+# --- Configuration & Paths ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(BASE_DIR, "models")
-FEEDBACK_FILE = os.path.join(BASE_DIR, "data", "user_feedback.csv")
-DB_PATH = os.path.join(BASE_DIR, "data", "phishalert.db")
-BRANDS_FILE = os.path.join(BASE_DIR, "data", "trusted_brands.txt")
-KEYWORDS_FILE = os.path.join(BASE_DIR, "data", "suspicious_keywords.txt")  # Added Keywords File Path
+DATA_PATH = os.path.join(BASE_DIR, "data")
+FEEDBACK_FILE = os.path.join(DATA_PATH, "user_feedback.csv")
+DB_PATH = os.path.join(DATA_PATH, "phishalert.db")
+BRANDS_FILE = os.path.join(DATA_PATH, "trusted_brands.txt")
+KEYWORDS_FILE = os.path.join(DATA_PATH, "suspicious_keywords.txt")
 
-os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+os.makedirs(DATA_PATH, exist_ok=True)
+
+# --- Regex & Constants ---
+SUSPICIOUS_TLDS = {
+    "xyz", "top", "click", "link", "work", "zip", "mov", "ru", "cn", "tk",
+    "gq", "ml", "cf", "ga", "rest", "support", "accountant", "country"
+}
+URL_REGEX = re.compile(r"(https?://[^\s\"'<>]+|www\.[^\s\"'<>]+)", re.IGNORECASE)
+IP_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 
 
-# Dynamic loading of trusted brands from external database/file (Black-Box requirement)
+# --- Dynamic Loading ---
 def load_trusted_brands():
     if not os.path.exists(BRANDS_FILE):
-        # Fallback if file is missing
         return ['paypal', 'google', 'amazon', 'microsoft', 'apple', 'netflix', 'facebook']
     with open(BRANDS_FILE, 'r', encoding='utf-8') as f:
         return [line.strip().lower() for line in f if line.strip()]
 
 
-# Dynamic loading of suspicious keywords from external file (Black-Box requirement)
 def load_suspicious_keywords():
-    # Fallback default list in case the file is missing or corrupted
     default_keywords = [
         'urgent', 'verify', 'account', 'update', 'password', 'bank', 'pay', 'immediately',
         'click', 'confirm', 'suspend', 'suspended', 'restricted', 'unusual',
@@ -38,30 +47,164 @@ def load_suspicious_keywords():
         'transfer', 'billing', 'invoice', 'payment', 'alert', 'warning',
         'unauthorized', 'blocked', 'locked'
     ]
-
     if not os.path.exists(KEYWORDS_FILE):
-        print(f"[-] Warning: {KEYWORDS_FILE} not found. Using safe default list.")
         return default_keywords
-
     try:
         with open(KEYWORDS_FILE, 'r', encoding='utf-8') as f:
-            # Read line by line, strip whitespace, and convert to lowercase for exact matching
             words = [line.strip().lower() for line in f if line.strip()]
-
-        if not words:
-            print("[-] Warning: Keywords file is empty. Using default list.")
-            return default_keywords
-
-        return words
-
-    except Exception as e:
-        print(f"[-] Error reading keywords file: {e}")
+        return words if words else default_keywords
+    except Exception:
         return default_keywords
 
 
-# Load BOTH models for the Ensemble pipeline
-logistic_data = joblib.load(os.path.join(MODELS_PATH, "logistic_model.pkl"))
-rf_data = joblib.load(os.path.join(MODELS_PATH, "random_forest_model.pkl"))
+# --- Load Models & Expected Features ---
+print("[*] Booting Machine Learning Pipelines...")
+
+# 🚀 התיקון החכם: השרת יודע לחלץ את המודל מתוך מילון או להשתמש בו ישירות
+raw_log = joblib.load(os.path.join(MODELS_PATH, "logistic_model.pkl"))
+logistic_model = raw_log["model"] if isinstance(raw_log, dict) else raw_log
+
+raw_rf = joblib.load(os.path.join(MODELS_PATH, "random_forest_model.pkl"))
+rf_model = raw_rf["model"] if isinstance(raw_rf, dict) else raw_rf
+
+# טעינת שמות העמודות כדי לסדר למודל את הנתונים בול כמו שהוא רגיל
+MODEL_FEATURES = []
+rf_metrics_path = os.path.join(MODELS_PATH, "random_forest_model_metrics.json")
+if os.path.exists(rf_metrics_path):
+    try:
+        with open(rf_metrics_path, "r", encoding="utf-8") as f:
+            metrics_data = json.load(f)
+            MODEL_FEATURES = metrics_data.get("feature_names", [])
+    except Exception:
+        pass
+
+# גיבוי: אם לא הצלחנו לקרוא מה-JSON, נחלץ מתוך קובץ ה-PKL אם הוא נשמר כמילון
+if not MODEL_FEATURES:
+    if isinstance(raw_rf, dict) and "feature_names" in raw_rf:
+        MODEL_FEATURES = raw_rf["feature_names"]
+    else:
+        print("[-] WARNING: Could not load feature names. App may crash during scan.")
+
+
+# --- Helpers for Feature Extraction ---
+def normalize_url(url):
+    if url.lower().startswith("www."):
+        return "http://" + url
+    return url
+
+
+def get_domain(url):
+    try:
+        parsed = urlparse(normalize_url(url))
+        return parsed.netloc.lower()
+    except Exception:
+        return ""
+
+
+def get_tld(domain):
+    domain = domain.split(":")[0]
+    parts = [part for part in domain.split(".") if part]
+    return parts[-1] if len(parts) >= 2 else ""
+
+
+def extract_live_features(body, sender, subject=""):
+    features = {}
+
+    # Text Analysis
+    body_words = re.findall(r"\b\w+\b", body)
+    word_count = len(body_words)
+    text_combined = f"{body} {subject}"
+
+    features['body_length'] = len(body)
+    features['subject_length'] = len(subject)
+    features['word_count'] = word_count
+    features['avg_word_length'] = float(np.mean([len(w) for w in body_words])) if body_words else 0.0
+    features['uppercase_ratio'] = sum(1 for c in body if c.isupper()) / max(1, len(body))
+    features['digit_count'] = sum(1 for c in body if c.isdigit())
+    features['exclamation_count'] = body.count('!')
+    features['question_count'] = body.count('?')
+    features['special_char_count'] = len(re.findall(r'[^A-Za-z0-9\s]', body))
+    features['body_has_html'] = 1 if re.search(r'<html|<a\s+href|</', body, re.IGNORECASE) else 0
+    features['subject_has_re'] = 1 if re.search(r'^\s*re:', subject, re.IGNORECASE) else 0
+    features['subject_has_fwd'] = 1 if re.search(r'^\s*(?:fwd|fw):', subject, re.IGNORECASE) else 0
+
+    # Keyword Analysis
+    suspicious_words = load_suspicious_keywords()
+    keyword_count = 0
+    for word in suspicious_words:
+        val = 1 if word in body.lower() else 0
+        features[f'word_{word}'] = val
+        keyword_count += val
+
+    features['keyword_count'] = keyword_count
+    features['keyword_density'] = keyword_count / max(1, word_count)
+
+    # URL Analysis
+    urls = URL_REGEX.findall(text_combined)
+    features['has_urls'] = 1 if urls else 0
+
+    if urls:
+        domains = [get_domain(u) for u in urls]
+        lengths = [len(u) for u in urls]
+        all_urls_text = " ".join(urls)
+        features['url_count'] = len(urls)
+        features['has_https_url'] = 1 if any(u.lower().startswith("https://") for u in urls) else 0
+        features['has_ip_url'] = 1 if any(IP_REGEX.match(d.split(":")[0]) for d in domains) else 0
+        features['has_at_symbol_url'] = 1 if any("@" in u for u in urls) else 0
+        features['has_suspicious_tld'] = 1 if any(get_tld(d) in SUSPICIOUS_TLDS for d in domains) else 0
+        features['url_avg_length'] = float(np.mean(lengths))
+        features['url_max_length'] = int(max(lengths))
+        features['url_dot_count'] = all_urls_text.count('.')
+        features['url_dash_count'] = all_urls_text.count('-')
+        features['url_digit_count'] = sum(1 for c in all_urls_text if c.isdigit())
+    else:
+        for k in ['url_count', 'has_https_url', 'has_ip_url', 'has_at_symbol_url', 'has_suspicious_tld',
+                  'url_avg_length', 'url_max_length', 'url_dot_count', 'url_dash_count', 'url_digit_count']:
+            features[k] = 0
+
+    # Sender & Brand Analysis
+    sender_domain_match = re.search(r'@([\w.\-]+)', sender.lower())
+    domain = sender_domain_match.group(1) if sender_domain_match else ""
+
+    features['sender_domain_length'] = len(domain)
+    features['sender_has_digits'] = 1 if re.search(r'\d', domain) else 0
+    features['sender_has_dash'] = 1 if '-' in domain else 0
+    features['sender_subdomain_count'] = max(0, domain.count('.') - 1)
+
+    trusted_brands = load_trusted_brands()
+    brand_in_sender = 0
+    brand_in_subject = 0
+    brand_in_body = 0
+
+    if trusted_brands:
+        brand_pattern = "|".join(re.escape(b) for b in trusted_brands)
+        if re.search(brand_pattern, domain, re.IGNORECASE): brand_in_sender = 1
+        if re.search(brand_pattern, subject, re.IGNORECASE): brand_in_subject = 1
+        if re.search(brand_pattern, text_combined, re.IGNORECASE): brand_in_body = 1
+
+    features['brand_in_sender'] = brand_in_sender
+    features['brand_in_subject'] = brand_in_subject
+    features['brand_in_body'] = brand_in_body
+    features['brand_mismatch'] = 1 if (brand_in_body == 1 and brand_in_sender == 0) else 0
+
+    lev_score = 0.5
+    if domain:
+        scores = []
+        for d in trusted_brands:
+            if d in domain or any(SequenceMatcher(None, sub, d).ratio() > 0.75 for sub in domain.split('-')):
+                scores.append(0.95)
+            else:
+                scores.append(1 - SequenceMatcher(None, domain, d).ratio())
+        lev_score = max(scores) if scores else 0.5
+
+    features['levenshtein_dist'] = lev_score
+    features['auth_verify'] = 1 if re.search(r'spf=pass|dkim=pass', body.lower()) else 0
+
+    # סידור העמודות בדיוק בסדר שהמודל התאמן עליו
+    df_features = pd.DataFrame([features])
+    df_aligned = df_features.reindex(columns=MODEL_FEATURES, fill_value=0)
+
+    return df_aligned, domain, lev_score, keyword_count, features['has_urls'], features['auth_verify']
 
 
 def get_feedback_adjustment(sender):
@@ -81,71 +224,25 @@ def get_feedback_adjustment(sender):
         return 0
 
 
-def extract_live_features(body, sender):
-    # Load keywords dynamically instead of using a hardcoded list
-    suspicious_words = load_suspicious_keywords()
-
-    features = {}
-    features['has_urls'] = 1 if re.search(r'http[s]?://', body) else 0
-
-    keyword_count = 0
-    for word in suspicious_words:
-        val = 1 if word in body.lower() else 0
-        features[f'word_{word}'] = val
-        keyword_count += val
-    features['keyword_count'] = keyword_count
-
-    domain_match = re.search(r'@([\w.\-]+)', sender)
-    domain = domain_match.group(1).lower() if domain_match else ""
-
-    if not domain:
-        url_match = re.search(r'https?://([\w.\-]+)', body)
-        domain = url_match.group(1).lower() if url_match else ""
-
-    # Dynamic calculation using external black-box brands file
-    trusted_brands = load_trusted_brands()
-    lev_score = 0.5
-    if domain:
-        scores = []
-        for d in trusted_brands:
-            # Check for hidden strings or partial matches inside structural components
-            if d in domain or any(SequenceMatcher(None, sub, d).ratio() > 0.75 for sub in domain.split('-')):
-                scores.append(0.95)
-            else:
-                scores.append(1 - SequenceMatcher(None, domain, d).ratio())
-        lev_score = max(scores) if scores else 0.5
-
-    features['levenshtein_dist'] = lev_score
-    features['auth_verify'] = 1 if re.search(r'spf=pass|dkim=pass', body.lower()) else 0
-
-    feature_order = ['has_urls', 'levenshtein_dist', 'auth_verify', 'keyword_count'] + [f'word_{w}' for w in
-                                                                                        suspicious_words]
-    vector = [features[col] for col in feature_order]
-
-    return vector, domain, lev_score, keyword_count, features['has_urls'], features['auth_verify']
-
-
 @app.route('/analyze', methods=['POST'])
 def analyze():
     try:
         data = request.get_json()
         body = data.get('body', '')
         sender = data.get('sender', '')
+        subject = data.get('subject', '')
 
         if not body:
-            return jsonify({"status": "error", "message": "Email body is missing"}), 400
+            return jsonify({"status": "error", "error": "Email body is missing"}), 400
 
-        vector, domain, lev_dist, key_count, has_urls, auth_verify = extract_live_features(body, sender)
+        # Extract features mapped exactly to what the models expect
+        df_vector, domain, lev_dist, key_count, has_urls, auth_verify = extract_live_features(body, sender, subject)
 
-        # 1. Evaluate Model 1: Logistic Regression
-        scaler = logistic_data['scaler']
-        vector_scaled = scaler.transform([vector])
-        p_log = logistic_data['model'].predict_proba(vector_scaled)[0][1]
+        # Evaluate Models using the pipelines directly
+        p_log = logistic_model.predict_proba(df_vector)[0][1]
+        p_rf = rf_model.predict_proba(df_vector)[0][1]
 
-        # 2. Evaluate Model 2: Random Forest
-        p_rf = rf_data['model'].predict_proba([vector])[0][1]
-
-        # Soft Voting Ensemble weight balance
+        # Soft Voting Ensemble weight balance (70% RF, 30% Logistic)
         base_score = (p_rf * 0.7 + p_log * 0.3) * 100
 
         # Feedback loop modifier
@@ -156,6 +253,19 @@ def analyze():
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS scan_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        scan_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        sender_email TEXT,
+                        sender_domain TEXT,
+                        phish_score REAL,
+                        classification TEXT,
+                        levenshtein_dist REAL,
+                        keyword_count INTEGER,
+                        has_urls INTEGER
+                    )
+                """)
                 cursor.execute("""
                     INSERT INTO scan_history (sender_email, sender_domain, phish_score, classification, levenshtein_dist, keyword_count, has_urls)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -170,14 +280,15 @@ def analyze():
             "base_ai_score": round(base_score, 2),
             "classification": classification,
             "was_adjusted": True if adjustment != 0 else False,
-            "recommendation": "CRITICAL RISK: System Isolation Recommended!" if classification == "Dangerous" else "Legitimate Infrastructure.",
             "lev_score": round(lev_dist, 2),
             "ai_prob": round(p_rf * 100, 2),
-            "auth_check": "VERIFIED (SPF/DKIM PASS)" if auth_verify == 1 else "UNVERIFIED INFRASTRUCTURE"
+            "keyword_count": key_count,
+            "auth_check": "VERIFIED" if auth_verify == 1 else "UNVERIFIED"
         })
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"Prediction Crash: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route('/history', methods=['GET'])
@@ -189,11 +300,11 @@ def get_history():
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC")
+                "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC LIMIT 100")
             rows = cursor.fetchall()
             return jsonify([dict(row) for row in rows])
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route('/feedback', methods=['POST'])
@@ -204,7 +315,7 @@ def save_feedback():
         correct_label = data.get('correct_label', '')
 
         if not sender or not correct_label:
-            return jsonify({"status": "error", "message": "Invalid feedback data"}), 400
+            return jsonify({"status": "error", "error": "Invalid feedback data"}), 400
 
         new_row = pd.DataFrame([[sender, correct_label]], columns=['sender', 'correct_label'])
         if not os.path.isfile(FEEDBACK_FILE):
@@ -213,10 +324,9 @@ def save_feedback():
             new_row.to_csv(FEEDBACK_FILE, mode='a', header=False, index=False)
         return jsonify({"status": "success", "message": "Feedback recorded."})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 if __name__ == '__main__':
     print("--- PhishAlert Advanced Network API Online ---")
-    # Using 127.0.0.1 as it successfully bypassed the firewall connection issues previously
     app.run(host='127.0.0.1', port=5000, debug=True)

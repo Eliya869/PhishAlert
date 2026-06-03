@@ -63,7 +63,7 @@ public class MainWindow extends JFrame {
 
     private void setupWindow() {
         setTitle("PhishAlert - Enterprise Security Dashboard");
-        setSize(1400, 880);
+        setSize(1280, 960);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         getContentPane().setBackground(COLOR_BG);
@@ -326,7 +326,7 @@ public class MainWindow extends JFrame {
     }
 
     // ==========================================
-    // TAB 2: STATISTICS (Full Graphs & Charts)
+    // TAB 2: STATISTICS (UPDATED WITH LATEST DATA)
     // ==========================================
     private JPanel createStatisticsTab() {
         JPanel panel = new JPanel(new BorderLayout(0, 16));
@@ -373,23 +373,23 @@ public class MainWindow extends JFrame {
         JPanel top = new JPanel(new BorderLayout(12, 0));
         top.setOpaque(false);
         top.add(createMetricSummary(new String[][]{
-                {"Accuracy", "54.83%", "54"},
-                {"Precision", "53.93%", "53"},
-                {"Recall", "99.35%", "99"},
-                {"F1 Score", "69.91%", "69"}
+                {"Accuracy", "65.78%", "66"},
+                {"Precision", "62.19%", "62"},
+                {"Recall", "89.85%", "90"},
+                {"F1 Score", "73.50%", "74"}
         }), BorderLayout.CENTER);
         top.add(createStatusPill("High recall", COLOR_SAFE), BorderLayout.EAST);
         card.add(top, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new GridLayout(1, 2, 12, 0));
         center.setOpaque(false);
-        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{54, 53, 99, 69}, new Color[]{COLOR_SUSPICIOUS, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
+        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{66, 62, 90, 74}, new Color[]{COLOR_SUSPICIOUS, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
         center.add(createGradientDescentPanel());
         card.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new GridLayout(1, 2, 10, 0));
         bottom.setOpaque(false);
-        bottom.add(createMiniMatrix(751, 14269, 110, 16703));
+        bottom.add(createBeautifulConfusionMatrix(5834, 9186, 1707, 15106));
         bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{12, 28, 46, 63, 75, 84, 91}, new int[]{8, 22, 39, 55, 66, 72, 78}, COLOR_ACCENT, COLOR_PURPLE));
         card.add(bottom, BorderLayout.SOUTH);
         return card;
@@ -402,23 +402,23 @@ public class MainWindow extends JFrame {
         JPanel top = new JPanel(new BorderLayout(12, 0));
         top.setOpaque(false);
         top.add(createMetricSummary(new String[][]{
-                {"Accuracy", "57.19%", "57"},
-                {"Precision", "55.28%", "55"},
-                {"Recall", "99.22%", "99"},
-                {"F1 Score", "71.00%", "71"}
+                {"Accuracy", "71.86%", "72"},
+                {"Precision", "66.00%", "66"},
+                {"Recall", "96.35%", "96"},
+                {"F1 Score", "78.34%", "78"}
         }), BorderLayout.CENTER);
         top.add(createStatusPill("Primary Engine", COLOR_ACCENT), BorderLayout.EAST);
         card.add(top, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new GridLayout(1, 2, 12, 0));
         center.setOpaque(false);
-        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{57, 55, 99, 71}, new Color[]{COLOR_SUSPICIOUS, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
+        center.add(createBarChartPanel("Core Metrics", new String[]{"Acc", "Prec", "Recall", "F1"}, new int[]{72, 66, 96, 78}, new Color[]{COLOR_SAFE, COLOR_SUSPICIOUS, COLOR_SAFE, COLOR_ACCENT}));
         center.add(createHorizontalBarChart("Feature Importance", new String[]{"Domain Dist", "Keywords", "Has Links", "Auth"}, new int[]{86, 67, 55, 30}));
         card.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new GridLayout(1, 2, 10, 0));
         bottom.setOpaque(false);
-        bottom.add(createMiniMatrix(1523, 13497, 131, 16682));
+        bottom.add(createBeautifulConfusionMatrix(6674, 8346, 613, 16200));
         bottom.add(createMiniCurvePanel("ROC / PR Curve", new int[]{10, 24, 39, 51, 62, 68, 71}, new int[]{7, 18, 31, 43, 54, 62, 68}, COLOR_ACCENT, COLOR_PURPLE));
         card.add(bottom, BorderLayout.SOUTH);
         return card;
@@ -596,7 +596,7 @@ public class MainWindow extends JFrame {
         return panel;
     }
 
-    private JPanel createMiniMatrix(int tn, int fp, int fn, int tp) {
+    private JPanel createBeautifulConfusionMatrix(int tn, int fp, int fn, int tp) {
         JPanel wrapper = createMiniCard("Confusion Matrix");
         wrapper.setLayout(new BorderLayout(0, 8));
         JPanel grid = new JPanel(new GridLayout(3, 3, 3, 3));
