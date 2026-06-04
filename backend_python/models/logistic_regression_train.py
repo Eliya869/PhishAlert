@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-print("\n=== STARTING TEXT-AWARE LOGISTIC REGRESSION ===")
+print("\n=== STARTING LOGISTIC REGRESSION MODEL ===")
 
 # --- Paths & Global Configurations ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,7 +58,7 @@ def evaluate_model(model, X_test, y_test, threshold):
 def build_training_frame():
     """Assembles the multimodal dataset combining raw NLP text fields with engineered numeric columns."""
     if os.path.exists(SOURCE_DATA_PATH):
-        print(f"[*] Loading source NLP dataset: {SOURCE_DATA_PATH}")
+        print(f"Loading source NLP dataset: {SOURCE_DATA_PATH}")
         df = pd.read_csv(SOURCE_DATA_PATH, low_memory=False).dropna(subset=["label"])
 
         text_combined = df.get("text_combined", pd.Series("", index=df.index)).fillna("").astype(str)
@@ -76,13 +76,13 @@ def build_training_frame():
         return df[["text_for_model"] + numeric_features + ["label"]], numeric_features
 
     if os.path.exists(FALLBACK_DATA_PATH):
-        print(f"[*] Loading numeric fallback dataset: {FALLBACK_DATA_PATH}")
+        print(f"Loading numeric fallback dataset: {FALLBACK_DATA_PATH}")
         df = pd.read_csv(FALLBACK_DATA_PATH, low_memory=False).dropna(subset=["label"])
         df["text_for_model"] = ""
         numeric_features = [col for col in df.columns if col != "label"]
         return df[["text_for_model"] + numeric_features + ["label"]], numeric_features
 
-    raise FileNotFoundError("[-] Error: Training data not located in expected paths.")
+    raise FileNotFoundError("Error: Training data not located in expected paths.")
 
 
 def train_logistic():
@@ -110,7 +110,7 @@ def train_logistic():
         ("model", LogisticRegression(max_iter=2000, solver="liblinear", C=0.01, random_state=RANDOM_STATE))
     ])
 
-    print("[*] Training Natural Language (NLP) aware logistic model...")
+    print("Training Natural Language (NLP) aware logistic model...")
     pipeline.fit(X_train, y_train)
 
     train_prob = pipeline.predict_proba(X_train)[:, 1]

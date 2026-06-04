@@ -17,7 +17,7 @@ KEYWORDS_FILE = os.path.join(DATA_DIR, "suspicious_keywords.txt")
 def load_suspicious_keywords():
     """Imports signature terms dynamically from an external configuration file."""
     if not os.path.exists(KEYWORDS_FILE):
-        raise FileNotFoundError(f"[-] Deployment Error: Keyword ledger not found at {KEYWORDS_FILE}")
+        raise FileNotFoundError(f"Deployment Error: Keyword ledger not found at {KEYWORDS_FILE}")
 
     with open(KEYWORDS_FILE, 'r', encoding='utf-8') as f:
         return [line.strip().lower() for line in f if line.strip()]
@@ -28,7 +28,7 @@ def extract_basic_features(df):
     df['body'] = df['body'].fillna('')
     suspicious_words = load_suspicious_keywords()
 
-    print(f"[*] Extracting Features: Processing {len(suspicious_words)} dynamic signatures...")
+    print(f" Extracting Features: Processing {len(suspicious_words)} dynamic signatures...")
 
     # Construct individual binary columns per target keyword
     for word in suspicious_words:
@@ -45,15 +45,15 @@ def extract_basic_features(df):
 
 
 if __name__ == "__main__":
-    print("\n=== STARTING FEATURE ENGINEERING PIPELINE (X3) ===")
+    print("\n=== STARTING FEATURE ENGINEERING (X3) ===")
     raw_data_path = os.path.join(DATA_DIR, "phishing_data.csv")
     output_data_path = os.path.join(DATA_DIR, "model_ready_data.csv")
 
     if os.path.exists(raw_data_path):
-        print(f"[*] Input Data Source Identified: {raw_data_path}")
+        print(f"Input Data Source Identified: {raw_data_path}")
         raw_df = pd.read_csv(raw_data_path)
         processed_df = extract_basic_features(raw_df)
         processed_df.to_csv(output_data_path, index=False)
-        print(f"[+] Success! Compiled vectors persisted to storage.")
+        print(f"Success! Compiled vectors persisted to storage.")
     else:
-        print(f"[-] Evaluation Error: Could not find dataset at '{raw_data_path}'")
+        print(f"Evaluation Error: Could not find dataset at '{raw_data_path}'")

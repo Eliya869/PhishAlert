@@ -78,7 +78,7 @@ def build_training_frame():
         numeric_features = [col for col in df.columns if col.startswith("word_") or col in {
             "keyword_count", "has_urls", "levenshtein_dist", "auth_verify"}]
         return df[["text_for_model"] + numeric_features + ["label"]], numeric_features
-    raise FileNotFoundError("[-] Missing training data.")
+    raise FileNotFoundError("Missing training data.")
 
 
 def build_rf_frame(frame, numeric_features, text_model):
@@ -107,10 +107,10 @@ def train_rf():
         ("model", LogisticRegression(max_iter=2000, C=0.01, solver="liblinear", random_state=RANDOM_STATE))
     ])
 
-    print("[*] Training Base-Level NLP signal model...")
+    print("Training Base-Level NLP signal model...")
     text_model.fit(X_train["text_for_model"], y_train)
 
-    print("[*] Building Stacked Random Forest Meta-Matrix...")
+    print("Building Stacked Random Forest Meta-Matrix...")
     rf_features = numeric_features + ["text_phish_score"]
     X_train_rf = build_rf_frame(X_train, numeric_features, text_model)
     X_valid_rf = build_rf_frame(X_valid, numeric_features, text_model)
@@ -120,7 +120,7 @@ def train_rf():
     rf_model = RandomForestClassifier(n_estimators=250, max_depth=10, min_samples_leaf=8, max_features="sqrt",
                                       n_jobs=-1, random_state=RANDOM_STATE)
 
-    print("[*] Training Meta Random Forest Engine...")
+    print("Training Meta Random Forest Engine...")
     rf_model.fit(X_train_rf, y_train)
 
     valid_prob = rf_model.predict_proba(X_valid_rf)[:, 1]

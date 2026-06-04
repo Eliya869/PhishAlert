@@ -82,14 +82,12 @@ if not LOGISTIC_FEATURES:
 
 # --- Feature Extraction Helpers ---
 def normalize_url(url):
-    """Ensures URL has a standard scheme for accurate parsing."""
     if url.lower().startswith("www."):
         return "http://" + url
     return url
 
 
 def get_domain(url):
-    """Extracts the network location (domain) from a URL."""
     try:
         parsed = urlparse(normalize_url(url))
         return parsed.netloc.lower()
@@ -98,14 +96,12 @@ def get_domain(url):
 
 
 def get_tld(domain):
-    """Extracts the Top-Level Domain (TLD)."""
     domain = domain.split(":")[0]
     parts = [part for part in domain.split(".") if part]
     return parts[-1] if len(parts) >= 2 else ""
 
 
 def extract_live_features(body, sender, subject=""):
-    """Transforms raw email text into an aligned feature vector for the ML models."""
     features = {}
 
     # 1. Text & Structural Analysis
@@ -222,10 +218,11 @@ def get_feedback_adjustment(sender):
         sender_feedback = df[df['sender'] == sender]
         if not sender_feedback.empty:
             latest_correction = sender_feedback.iloc[-1]['correct_label']
+            # Force Override: Changed from +/-35 to +/-100 to guarantee immediate category change!
             if latest_correction == "Phishing":
-                return 35.0
+                return 100.0
             elif latest_correction == "Safe":
-                return -35.0
+                return -100.0
         return 0
     except Exception:
         return 0
@@ -251,8 +248,10 @@ def analyze():
         p_log = logistic_model.predict_proba(df_logistic_vector)[0][1]
         p_rf = rf_model.predict_proba(df_rf_vector)[0][1]
 
-        # Ensemble Weighted Scoring
-        base_score = (p_log * 0.8 + p_rf * 0.2) * 100
+        # Ensemble Weighted Scoring (70% Random Forest, 30% Logistic)
+        base_score = (p_rf * 0.7 + p_log * 0.3) * 100
+
+        # Apply Analyst Override
         adjustment = get_feedback_adjustment(sender)
         final_score = max(0, min(100, base_score + adjustment))
 
@@ -310,15 +309,37 @@ def get_history():
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            # Removed LIMIT completely. Will pull ALL history from phishalert.db
             cursor.execute(
-                "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC LIMIT 100")
+                "SELECT scan_date, sender_email, phish_score, classification FROM scan_history ORDER BY id DESC")
             return jsonify([dict(row) for row in cursor.fetchall()])
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route('/stats', methods=['GET'])
+def get_stats():
+    """Returns aggregated data for the Threat Intelligence Dashboard."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT classification, COUNT(*) FROM scan_history GROUP BY classification")
+            dist = dict(cursor.fetchall())
+
+            cursor.execute("SELECT COUNT(*) FROM scan_history")
+            total = cursor.fetchone()[0]
+
+            return jsonify({
+                "total_scans": total,
+                "distribution": dist
+            })
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route('/feedback', methods=['POST'])
 def save_feedback():
+    """Saves manual corrections from the SOC analyst."""
     try:
         data = request.get_json()
         sender = data.get('sender', '')

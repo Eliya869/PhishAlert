@@ -129,7 +129,7 @@ def build_model_ready_data(df):
     """Executes the master assembly for the numeric model matrix."""
     df = add_text_features(df.copy())
 
-    print("[*] Extracting URL structure features...")
+    print("Extracting URL structure features...")
     url_lists = df.apply(extract_urls, axis=1)
     suspicious_tlds = set(load_config_list(TLDS_FILE))
     url_feature_df = url_lists.apply(lambda u: url_features(u, suspicious_tlds))
@@ -170,12 +170,12 @@ def build_model_ready_data(df):
 
 if __name__ == "__main__":
     if not os.path.exists(INPUT_FILE):
-        print(f"[-] Error: {INPUT_FILE} not found.")
+        print(f" Error: {INPUT_FILE} not found.")
     else:
-        print("[*] Loading enriched source data...")
+        print("Loading enriched source data...")
         source_df = pd.read_csv(INPUT_FILE, low_memory=False)
         model_ready = build_model_ready_data(source_df)
         model_ready.to_csv(OUTPUT_FILE, index=False)
 
         feature_count = len(model_ready.columns) - 1
-        print(f"[+] Success! Dataset finalized with {feature_count} technical features.")
+        print(f"Success! Dataset finalized with {feature_count} technical features.")

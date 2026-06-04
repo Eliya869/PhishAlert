@@ -34,6 +34,7 @@ public class MainWindow extends JFrame {
     private JTextField senderField;
     private JTextArea bodyArea;
     private RoundedButton scanButton;
+    private RoundedButton btnReportMistake;
     private JProgressBar riskMeter;
 
     private JLabel lblFeatLinks;
@@ -45,7 +46,7 @@ public class MainWindow extends JFrame {
     private JLabel valDecision;
 
     private JPanel feedbackPanel;
-    private JButton btnReportMistake;
+    private JLabel feedbackTxt;
     private String lastSender = "";
     private String lastClassification = "";
 
@@ -53,6 +54,7 @@ public class MainWindow extends JFrame {
     private CardLayout cardLayout;
 
     private DefaultTableModel activeHistoryModel;
+    private DefaultTableModel fullHistoryModel; // הוספנו משתנה גלובלי לטבלה הגדולה
 
     public MainWindow() {
         setupWindow();
@@ -122,9 +124,23 @@ public class MainWindow extends JFrame {
 
         add(cardPanel, BorderLayout.CENTER);
 
-        btnTab1.addActionListener(e -> { cardLayout.show(cardPanel, "Scanner"); updateNavState(btnTab1, btnTab2, btnTab3); });
-        btnTab2.addActionListener(e -> { cardLayout.show(cardPanel, "Model Statistics"); updateNavState(btnTab2, btnTab1, btnTab3); });
-        btnTab3.addActionListener(e -> { cardLayout.show(cardPanel, "Scan Database"); updateNavState(btnTab3, btnTab1, btnTab2); });
+        // רענון אקטיבי של הטבלאות במעבר בין לשוניות
+        btnTab1.addActionListener(e -> {
+            cardLayout.show(cardPanel, "Scanner");
+            updateNavState(btnTab1, btnTab2, btnTab3);
+            if (activeHistoryModel != null) refreshLogs(activeHistoryModel);
+        });
+
+        btnTab2.addActionListener(e -> {
+            cardLayout.show(cardPanel, "Model Statistics");
+            updateNavState(btnTab2, btnTab1, btnTab3);
+        });
+
+        btnTab3.addActionListener(e -> {
+            cardLayout.show(cardPanel, "Scan Database");
+            updateNavState(btnTab3, btnTab1, btnTab2);
+            if (fullHistoryModel != null) refreshLogs(fullHistoryModel); // רענון הטבלה הגדולה בלחיצה
+        });
 
         updateNavState(btnTab1, btnTab2, btnTab3);
 
@@ -149,15 +165,15 @@ public class MainWindow extends JFrame {
         feedbackPanel.setBackground(COLOR_BG);
         feedbackPanel.setVisible(false);
 
-        JLabel feedbackTxt = new JLabel("Did the system misclassify this email?");
+        feedbackTxt = new JLabel("Analyst Override:");
         feedbackTxt.setForeground(COLOR_MUTED);
-        feedbackTxt.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        feedbackTxt.setFont(new Font("Segoe UI", Font.PLAIN, 14));
 
-        btnReportMistake = new RoundedButton("Report Mistake & Update Weights");
+        btnReportMistake = new RoundedButton("Override");
         btnReportMistake.setBackground(COLOR_DANGER);
         btnReportMistake.setForeground(Color.WHITE);
         btnReportMistake.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btnReportMistake.setPreferredSize(new Dimension(240, 35));
+        btnReportMistake.setPreferredSize(new Dimension(220, 35));
 
         feedbackPanel.add(feedbackTxt);
         feedbackPanel.add(btnReportMistake);
@@ -257,7 +273,7 @@ public class MainWindow extends JFrame {
         leftCard.add(featureGrid);
         leftCard.add(Box.createVerticalStrut(25));
 
-        scanButton = new RoundedButton("Execute Threat Scan");
+        scanButton = new RoundedButton("Scan Email");
         scanButton.setBackground(COLOR_ACCENT);
         scanButton.setAlignmentX(Component.LEFT_ALIGNMENT);
         scanButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
@@ -322,7 +338,7 @@ public class MainWindow extends JFrame {
     }
 
     // ==========================================
-    // TAB 2: STATISTICS (91% TRIUMPH DATA)
+    // TAB 2: STATISTICS
     // ==========================================
     private JPanel createStatisticsTab() {
         JPanel panel = new JPanel(new BorderLayout(0, 16));
@@ -770,14 +786,14 @@ public class MainWindow extends JFrame {
         mainLedgerCard.setLayout(new BorderLayout());
 
         String[] cols = {"Scan Timestamp", "Ingested Sender", "Threat Score", "Final Verdict"};
-        DefaultTableModel fullModel = new DefaultTableModel(cols, 0);
-        JTable fullTable = styleZebraTable(new JTable(fullModel));
+        fullHistoryModel = new DefaultTableModel(cols, 0); // הוגדר להיות משתנה גלובלי
+        JTable fullTable = styleZebraTable(new JTable(fullHistoryModel));
         JScrollPane scroll = styleScrollPane(new JScrollPane(fullTable));
 
         mainLedgerCard.add(scroll, BorderLayout.CENTER);
         panel.add(mainLedgerCard, BorderLayout.CENTER);
 
-        refreshLogs(fullModel);
+        refreshLogs(fullHistoryModel);
         return panel;
     }
 
@@ -950,9 +966,11 @@ public class MainWindow extends JFrame {
                 }
                 public void mouseExited(MouseEvent evt) {
                     if (isEnabled()) {
-                        if (getText().equals("Execute Threat Scan")) {
+                        if (getText().contains("Threat Scan")) {
                             setBackground(COLOR_ACCENT);
-                        } else {
+                        } else if (getText().contains("Mark as Safe")) {
+                            setBackground(COLOR_SAFE);
+                        } else if (getText().contains("Mark as Phishing")) {
                             setBackground(COLOR_DANGER);
                         }
                     }
@@ -1021,6 +1039,17 @@ public class MainWindow extends JFrame {
                     boolean isDangerous = finalScoreInt >= 75;
                     boolean isSafe = finalScoreInt < 45;
 
+                    // DYNAMIC BUTTON LOGIC
+                    if (isSafe) {
+                        feedbackTxt.setText("Missed a threat?");
+                        btnReportMistake.setText("Mark as Phishing");
+                        btnReportMistake.setBackground(COLOR_DANGER);
+                    } else {
+                        feedbackTxt.setText("False alarm?");
+                        btnReportMistake.setText("Mark as Safe");
+                        btnReportMistake.setBackground(COLOR_SAFE);
+                    }
+
                     if (isDangerous) {
                         String originalText = bodyArea.getText();
                         String sanitizedText = originalText.replaceAll("(?i)\\b(https?://|www\\.)\\S+\\b", "[MALICIOUS_LINK_BLOCKED]");
@@ -1067,8 +1096,12 @@ public class MainWindow extends JFrame {
                     }
                     feedbackPanel.setVisible(true);
 
+                    // רענון אוטומטי של שתי הטבלאות לאחר סריקה
                     if (activeHistoryModel != null) {
                         refreshLogs(activeHistoryModel);
+                    }
+                    if (fullHistoryModel != null) {
+                        refreshLogs(fullHistoryModel);
                     }
                 });
             } catch (Exception ex) {
@@ -1106,7 +1139,8 @@ public class MainWindow extends JFrame {
     }
 
     private void sendHumanOverride() {
-        String correctLabel = (!lastClassification.equalsIgnoreCase("Dangerous")) ? "Phishing" : "Safe";
+        // DYNAMIC FEEDBACK LOGIC
+        String correctLabel = (lastClassification.equalsIgnoreCase("Safe")) ? "Phishing" : "Safe";
 
         new Thread(() -> {
             try {
