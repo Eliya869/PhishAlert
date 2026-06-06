@@ -16,7 +16,7 @@ import com.google.gson.JsonObject;
 
 public class MainWindow extends JFrame {
 
-    // Ultra-Premium Cyber SOC Palette
+    // Colors
     private final Color COLOR_BG = new Color(13, 15, 19);
     private final Color COLOR_NAV = new Color(20, 23, 29);
     private final Color COLOR_CARD = new Color(26, 30, 38);
@@ -31,6 +31,7 @@ public class MainWindow extends JFrame {
     private final Color COLOR_DANGER = new Color(255, 71, 87);
     private final Color COLOR_PURPLE = new Color(155, 121, 255);
 
+    // UI Elements
     private JTextField senderField;
     private JTextArea bodyArea;
     private RoundedButton scanButton;
@@ -54,7 +55,9 @@ public class MainWindow extends JFrame {
     private CardLayout cardLayout;
 
     private DefaultTableModel activeHistoryModel;
-    private DefaultTableModel fullHistoryModel; // הוספנו משתנה גלובלי לטבלה הגדולה
+    private DefaultTableModel fullHistoryModel;
+
+    private XAIRadarChart radarChart;
 
     public MainWindow() {
         setupWindow();
@@ -62,7 +65,7 @@ public class MainWindow extends JFrame {
     }
 
     private void setupWindow() {
-        setTitle("PhishAlert - Enterprise Security Dashboard");
+        setTitle("PhishAlert - Security Dashboard");
         setSize(1280, 960);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -83,11 +86,11 @@ public class MainWindow extends JFrame {
         header.setBackground(COLOR_NAV);
         header.setBorder(new EmptyBorder(25, 35, 15, 35));
 
-        JLabel title = new JLabel("PhishAlert Security Dashboard");
+        JLabel title = new JLabel("PhishAlert Dashboard");
         title.setFont(new Font("Segoe UI", Font.BOLD, 26));
         title.setForeground(Color.WHITE);
 
-        JLabel subtitle = new JLabel("Advanced Phishing Detection System");
+        JLabel subtitle = new JLabel("Smart Phishing Detection");
         subtitle.setForeground(COLOR_ACCENT);
         subtitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
 
@@ -100,14 +103,16 @@ public class MainWindow extends JFrame {
         navBar.setBackground(COLOR_NAV);
         navBar.setBorder(new MatteBorder(0, 0, 1, 0, COLOR_BORDER));
 
-        JButton btnTab1 = createNavButton("Scanner");
-        JButton btnTab2 = createNavButton("Model Statistics");
-        JButton btnTab3 = createNavButton("Scan Database");
+        JButton btnTab1 = createNavButton("Scan Window");
+        JButton btnTab2 = createNavButton("Models Statistics");
+        JButton btnTab3 = createNavButton("Scan History");
+        JButton btnTab4 = createNavButton("Threat Radar");
 
         navBar.add(Box.createHorizontalStrut(25));
         navBar.add(btnTab1);
         navBar.add(btnTab2);
         navBar.add(btnTab3);
+        navBar.add(btnTab4);
 
         topContainer.add(navBar, BorderLayout.SOUTH);
         add(topContainer, BorderLayout.NORTH);
@@ -118,31 +123,19 @@ public class MainWindow extends JFrame {
         cardPanel.setBackground(COLOR_BG);
         cardPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        cardPanel.add(createScannerTab(), "Scanner");
-        cardPanel.add(createStatisticsTab(), "Model Statistics");
-        cardPanel.add(createDatabaseTab(), "Scan Database");
+        cardPanel.add(createScannerTab(), "Scan Window");
+        cardPanel.add(createStatisticsTab(), "Models Statistics");
+        cardPanel.add(createDatabaseTab(), "Scan History");
+        cardPanel.add(createXaiTab(), "Threat Radar");
 
         add(cardPanel, BorderLayout.CENTER);
 
-        // רענון אקטיבי של הטבלאות במעבר בין לשוניות
-        btnTab1.addActionListener(e -> {
-            cardLayout.show(cardPanel, "Scanner");
-            updateNavState(btnTab1, btnTab2, btnTab3);
-            if (activeHistoryModel != null) refreshLogs(activeHistoryModel);
-        });
+        btnTab1.addActionListener(e -> { cardLayout.show(cardPanel, "Scan Window"); updateNavState(btnTab1, btnTab2, btnTab3, btnTab4); if(activeHistoryModel!=null) refreshLogs(activeHistoryModel); });
+        btnTab2.addActionListener(e -> { cardLayout.show(cardPanel, "Models Statistics"); updateNavState(btnTab2, btnTab1, btnTab3, btnTab4); });
+        btnTab3.addActionListener(e -> { cardLayout.show(cardPanel, "Scan History"); updateNavState(btnTab3, btnTab1, btnTab2, btnTab4); if (fullHistoryModel != null) refreshLogs(fullHistoryModel); });
+        btnTab4.addActionListener(e -> { cardLayout.show(cardPanel, "Threat Radar"); updateNavState(btnTab4, btnTab1, btnTab2, btnTab3); });
 
-        btnTab2.addActionListener(e -> {
-            cardLayout.show(cardPanel, "Model Statistics");
-            updateNavState(btnTab2, btnTab1, btnTab3);
-        });
-
-        btnTab3.addActionListener(e -> {
-            cardLayout.show(cardPanel, "Scan Database");
-            updateNavState(btnTab3, btnTab1, btnTab2);
-            if (fullHistoryModel != null) refreshLogs(fullHistoryModel); // רענון הטבלה הגדולה בלחיצה
-        });
-
-        updateNavState(btnTab1, btnTab2, btnTab3);
+        updateNavState(btnTab1, btnTab2, btnTab3, btnTab4);
 
         // --- FOOTER ---
         JPanel footer = new JPanel();
@@ -154,7 +147,7 @@ public class MainWindow extends JFrame {
         riskMeter.setValue(0);
         riskMeter.setStringPainted(true);
         riskMeter.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        riskMeter.setString("System Standby - Ready for payload ingestion");
+        riskMeter.setString("Ready to scan...");
         riskMeter.setForeground(Color.GRAY);
         riskMeter.setBackground(COLOR_CARD);
         riskMeter.setBorder(BorderFactory.createLineBorder(COLOR_BORDER, 1));
@@ -165,11 +158,11 @@ public class MainWindow extends JFrame {
         feedbackPanel.setBackground(COLOR_BG);
         feedbackPanel.setVisible(false);
 
-        feedbackTxt = new JLabel("Analyst Override:");
+        feedbackTxt = new JLabel("Wrong?");
         feedbackTxt.setForeground(COLOR_MUTED);
         feedbackTxt.setFont(new Font("Segoe UI", Font.PLAIN, 14));
 
-        btnReportMistake = new RoundedButton("Override");
+        btnReportMistake = new RoundedButton("Fix Result");
         btnReportMistake.setBackground(COLOR_DANGER);
         btnReportMistake.setForeground(Color.WHITE);
         btnReportMistake.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -209,18 +202,15 @@ public class MainWindow extends JFrame {
         return btn;
     }
 
-    private void updateNavState(JButton active, JButton inactive1, JButton inactive2) {
+    private void updateNavState(JButton active, JButton... inactive) {
         active.setForeground(COLOR_ACCENT);
         active.setBackground(COLOR_BG);
         active.setBorder(new MatteBorder(3, 1, 0, 1, COLOR_BORDER));
-
-        inactive1.setForeground(COLOR_MUTED);
-        inactive1.setBackground(COLOR_NAV);
-        inactive1.setBorder(new EmptyBorder(12, 20, 12, 20));
-
-        inactive2.setForeground(COLOR_MUTED);
-        inactive2.setBackground(COLOR_NAV);
-        inactive2.setBorder(new EmptyBorder(12, 20, 12, 20));
+        for (JButton b : inactive) {
+            b.setForeground(COLOR_MUTED);
+            b.setBackground(COLOR_NAV);
+            b.setBorder(new EmptyBorder(12, 20, 12, 20));
+        }
     }
 
     // ==========================================
@@ -231,16 +221,16 @@ public class MainWindow extends JFrame {
         panel.setBackground(COLOR_BG);
 
         // LEFT SIDE
-        JPanel leftCard = createDashboardCard("Analysis Input Vector");
+        JPanel leftCard = createDashboardCard("Email Details");
         leftCard.setLayout(new BoxLayout(leftCard, BoxLayout.Y_AXIS));
 
-        leftCard.add(createSectionLabel("Sender Email Address:"));
+        leftCard.add(createSectionLabel("Sender Address:"));
         senderField = createStyledTextField();
         senderField.setAlignmentX(Component.LEFT_ALIGNMENT);
         leftCard.add(senderField);
         leftCard.add(Box.createVerticalStrut(20));
 
-        leftCard.add(createSectionLabel("Email Payload (Body Content):"));
+        leftCard.add(createSectionLabel("Email Text:"));
         bodyArea = new JTextArea();
         bodyArea.setBackground(COLOR_PANEL_INNER);
         bodyArea.setForeground(Color.WHITE);
@@ -256,7 +246,7 @@ public class MainWindow extends JFrame {
         leftCard.add(scroll);
         leftCard.add(Box.createVerticalStrut(20));
 
-        leftCard.add(createSectionLabel("Extracted Structural Features:"));
+        leftCard.add(createSectionLabel("Quick Checks:"));
         JPanel featureGrid = new JPanel(new GridLayout(1, 3, 15, 0));
         featureGrid.setBackground(COLOR_CARD);
         featureGrid.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -265,9 +255,9 @@ public class MainWindow extends JFrame {
         lblFeatDomain = createDynamicValueLabel("-", COLOR_TEXT);
         lblFeatKeywords = createDynamicValueLabel("-", COLOR_TEXT);
 
-        featureGrid.add(createFeatureBlock("Contains Links", lblFeatLinks));
-        featureGrid.add(createFeatureBlock("Domain Distance", lblFeatDomain));
-        featureGrid.add(createFeatureBlock("Keywords Count", lblFeatKeywords));
+        featureGrid.add(createFeatureBlock("Has Links?", lblFeatLinks));
+        featureGrid.add(createFeatureBlock("Brand Fake Check", lblFeatDomain));
+        featureGrid.add(createFeatureBlock("Panic Words", lblFeatKeywords));
 
         featureGrid.setMaximumSize(new Dimension(Integer.MAX_VALUE, 75));
         leftCard.add(featureGrid);
@@ -286,14 +276,14 @@ public class MainWindow extends JFrame {
         JPanel rightWrapper = new JPanel(new GridLayout(2, 1, 0, 20));
         rightWrapper.setBackground(COLOR_BG);
 
-        JPanel telemetryCard = createDashboardCard("Telemetry Results");
+        JPanel telemetryCard = createDashboardCard("Scan Results");
         telemetryCard.setLayout(new BorderLayout());
 
         JPanel heroPanel = new JPanel(new BorderLayout());
         heroPanel.setBackground(COLOR_CARD);
         heroPanel.setBorder(new MatteBorder(0, 0, 1, 0, COLOR_BORDER));
 
-        JLabel heroTitle = new JLabel("SYSTEM VERDICT", SwingConstants.CENTER);
+        JLabel heroTitle = new JLabel("FINAL DECISION", SwingConstants.CENTER);
         heroTitle.setForeground(COLOR_MUTED);
         heroTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
         heroTitle.setBorder(new EmptyBorder(15, 0, 5, 0));
@@ -312,13 +302,13 @@ public class MainWindow extends JFrame {
         valLevenshtein = createDynamicValueLabel("-", COLOR_ACCENT);
         valAiScore = createDynamicValueLabel("-", COLOR_ACCENT);
 
-        detailsPanel.add(createResultRow("Domain Similarity Score", valLevenshtein));
-        detailsPanel.add(createResultRow("Machine Learning Probability", valAiScore));
+        detailsPanel.add(createResultRow("Fake Brand Score", valLevenshtein));
+        detailsPanel.add(createResultRow("AI Danger Score", valAiScore));
         telemetryCard.add(detailsPanel, BorderLayout.CENTER);
 
         rightWrapper.add(telemetryCard);
 
-        JPanel shortHistoryCard = createDashboardCard("Recent Network Traffic");
+        JPanel shortHistoryCard = createDashboardCard("Recent Scans");
         shortHistoryCard.setLayout(new BorderLayout());
 
         String[] shortCols = {"Time", "Sender", "Threat Score", "Status"};
@@ -347,11 +337,11 @@ public class MainWindow extends JFrame {
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(COLOR_BG);
 
-        JLabel title = new JLabel("Model Statistics & Visualization");
+        JLabel title = new JLabel("Model Performance");
         title.setFont(new Font("Segoe UI", Font.BOLD, 22));
         title.setForeground(Color.WHITE);
 
-        JLabel subtitle = new JLabel("In-depth analysis of Ensemble components (Logistic Regression & Random Forest)");
+        JLabel subtitle = new JLabel("Metrics & Graphs ");
         subtitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
         subtitle.setForeground(COLOR_MUTED);
 
@@ -440,10 +430,8 @@ public class MainWindow extends JFrame {
         return card;
     }
 
-    // --- Sub-Panels ---
-
     private JPanel createThresholdPanel() {
-        JPanel panel = createMiniCard("Classification Thresholds");
+        JPanel panel = createMiniCard("Risk Levels");
         panel.setLayout(new GridLayout(3, 1, 0, 8));
         panel.add(createInlineMetric("Safe", "0% - 44%", COLOR_SAFE));
         panel.add(createInlineMetric("Suspicious", "45% - 74%", COLOR_SUSPICIOUS));
@@ -452,7 +440,7 @@ public class MainWindow extends JFrame {
     }
 
     private JPanel createDataSplitPanel() {
-        JPanel panel = createMiniCard("Validation Setup");
+        JPanel panel = createMiniCard("Data Setup");
         panel.setLayout(new GridLayout(3, 1, 0, 8));
         panel.add(createInlineMetric("Train / Test", "80% / 20%", COLOR_ACCENT));
         panel.add(createInlineMetric("Cross Validation", "3 Folds", COLOR_PURPLE));
@@ -461,7 +449,7 @@ public class MainWindow extends JFrame {
     }
 
     private JPanel createDeploymentPanel() {
-        JPanel panel = createMiniCard("Production Readiness");
+        JPanel panel = createMiniCard("System Status");
         panel.setLayout(new GridLayout(3, 1, 0, 8));
         panel.add(createInlineMetric("Calibration", "Optimized", COLOR_SAFE));
         panel.add(createInlineMetric("Drift Monitoring", "Enabled", COLOR_SAFE));
@@ -540,7 +528,7 @@ public class MainWindow extends JFrame {
     }
 
     private JPanel createBeautifulConfusionMatrix(int tn, int fp, int fn, int tp) {
-        JPanel wrapper = createMiniCard("Confusion Matrix");
+        JPanel wrapper = createMiniCard("Confusion matrix");
         wrapper.setLayout(new BorderLayout(0, 8));
         JPanel grid = new JPanel(new GridLayout(3, 3, 3, 3));
         grid.setBackground(COLOR_PANEL_INNER);
@@ -589,7 +577,7 @@ public class MainWindow extends JFrame {
     }
 
     private JPanel createGradientDescentPanel() {
-        JPanel panel = createMiniCard("Gradient Descent");
+        JPanel panel = createMiniCard("Learning Progress");
         panel.setLayout(new BorderLayout(0, 10));
 
         JPanel chart = new JPanel() {
@@ -624,8 +612,8 @@ public class MainWindow extends JFrame {
 
         JPanel labels = new JPanel(new GridLayout(1, 2, 8, 0));
         labels.setOpaque(false);
-        labels.add(createInlineMetric("Initial Loss", "0.86", COLOR_SUSPICIOUS));
-        labels.add(createInlineMetric("Final Loss", "0.08", COLOR_SAFE));
+        labels.add(createInlineMetric("Start Error", "0.86", COLOR_SUSPICIOUS));
+        labels.add(createInlineMetric("Final Error", "0.08", COLOR_SAFE));
 
         panel.add(chart, BorderLayout.CENTER);
         panel.add(labels, BorderLayout.SOUTH);
@@ -661,6 +649,7 @@ public class MainWindow extends JFrame {
         return panel;
     }
 
+    // --- Inner Chart Classes ---
     private class BarChart extends JPanel {
         private final String[] labels;
         private final int[] values;
@@ -782,11 +771,11 @@ public class MainWindow extends JFrame {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(COLOR_BG);
 
-        JPanel mainLedgerCard = createDashboardCard("Global Ledger Archive");
+        JPanel mainLedgerCard = createDashboardCard("All Scan History");
         mainLedgerCard.setLayout(new BorderLayout());
 
-        String[] cols = {"Scan Timestamp", "Ingested Sender", "Threat Score", "Final Verdict"};
-        fullHistoryModel = new DefaultTableModel(cols, 0); // הוגדר להיות משתנה גלובלי
+        String[] cols = {"Time", "Sender", "Threat Score", "Final Verdict"};
+        fullHistoryModel = new DefaultTableModel(cols, 0);
         JTable fullTable = styleZebraTable(new JTable(fullHistoryModel));
         JScrollPane scroll = styleScrollPane(new JScrollPane(fullTable));
 
@@ -795,6 +784,165 @@ public class MainWindow extends JFrame {
 
         refreshLogs(fullHistoryModel);
         return panel;
+    }
+
+    // ==========================================
+    // TAB 4: THREAT RADAR
+    // ==========================================
+    private JPanel createXaiTab() {
+        JPanel panel = new JPanel(new BorderLayout(20, 20));
+        panel.setBackground(COLOR_BG);
+
+        // Header
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(COLOR_BG);
+        JLabel title = new JLabel("Threat Radar");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        title.setForeground(Color.WHITE);
+        JLabel subtitle = new JLabel("Visual map that shows each feature found in the email.");
+        subtitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        subtitle.setForeground(COLOR_MUTED);
+        JPanel titleStack = new JPanel(new GridLayout(2, 1, 0, 4));
+        titleStack.setOpaque(false);
+        titleStack.add(title);
+        titleStack.add(subtitle);
+        header.add(titleStack, BorderLayout.WEST);
+        panel.add(header, BorderLayout.NORTH);
+
+        // Radar Card
+        JPanel radarCard = createDashboardCard("Threat Breakdown");
+        radarCard.setLayout(new BorderLayout());
+
+        radarChart = new XAIRadarChart();
+        radarCard.add(radarChart, BorderLayout.CENTER);
+
+        // Explanations Panel
+        JPanel infoPanel = new JPanel(new GridLayout(5, 1, 0, 10));
+        infoPanel.setOpaque(false);
+        infoPanel.setBorder(new EmptyBorder(20, 40, 20, 20));
+        infoPanel.add(createXaiLegend("Fake Brand Name", "Looks like a famous brand but has a typo.", COLOR_DANGER));
+        infoPanel.add(createXaiLegend("Panic Words", "Uses words like 'Urgent' or 'Suspend' to scare you.", COLOR_SUSPICIOUS));
+        infoPanel.add(createXaiLegend("Bad Links", "Links point to suspicious places or hide IP addresses.", COLOR_ACCENT));
+        infoPanel.add(createXaiLegend("Fake Sender", "The email address doesn't match the real company.", COLOR_PURPLE));
+        infoPanel.add(createXaiLegend("Hidden Code", "Contains hidden HTML or weird text formatting.", COLOR_SAFE));
+
+        radarCard.add(infoPanel, BorderLayout.EAST);
+        panel.add(radarCard, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createXaiLegend(String title, String desc, Color dotColor) {
+        JPanel p = new JPanel(new BorderLayout(10, 0));
+        p.setOpaque(false);
+
+        JPanel dot = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D)g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(dotColor);
+                g2.fillOval(0, 10, 12, 12);
+            }
+        };
+        dot.setPreferredSize(new Dimension(20, 30));
+        dot.setOpaque(false);
+
+        JPanel texts = new JPanel(new GridLayout(2, 1));
+        texts.setOpaque(false);
+        JLabel t = new JLabel(title);
+        t.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        t.setForeground(Color.WHITE);
+        JLabel d = new JLabel(desc);
+        d.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        d.setForeground(COLOR_MUTED);
+        texts.add(t); texts.add(d);
+
+        p.add(dot, BorderLayout.WEST);
+        p.add(texts, BorderLayout.CENTER);
+        return p;
+    }
+
+    class XAIRadarChart extends JPanel {
+        private int[] scores = {0, 0, 0, 0, 0};
+        private final String[] labels = {"Fake Brand Name", "Panic Words", "Bad Links", "Fake Sender", "Hidden Code"};
+
+        public XAIRadarChart() {
+            setOpaque(false);
+        }
+
+        public void updateScores(int[] newScores) {
+            this.scores = newScores;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int cx = getWidth() / 2 - 50;
+            int cy = getHeight() / 2;
+            int radius = Math.min(cx, cy) - 40;
+
+            g2.setColor(COLOR_BORDER);
+            g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 0, new float[]{4}, 0));
+            for (int i = 1; i <= 4; i++) {
+                drawWebPolygon(g2, cx, cy, radius * i / 4);
+            }
+
+            g2.setStroke(new BasicStroke(1f));
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            for (int i = 0; i < 5; i++) {
+                double angle = Math.toRadians(-90 + i * 72);
+                int x = (int) (cx + Math.cos(angle) * radius);
+                int y = (int) (cy + Math.sin(angle) * radius);
+                g2.setColor(COLOR_BORDER);
+                g2.drawLine(cx, cy, x, y);
+
+                g2.setColor(COLOR_TEXT);
+                int lx = (int) (cx + Math.cos(angle) * (radius + 25));
+                int ly = (int) (cy + Math.sin(angle) * (radius + 20));
+
+                if (lx < cx) lx -= g2.getFontMetrics().stringWidth(labels[i]);
+                if (i == 0) lx -= g2.getFontMetrics().stringWidth(labels[i]) / 2;
+
+                g2.drawString(labels[i], lx, ly);
+            }
+
+            Polygon dataPoly = new Polygon();
+            for (int i = 0; i < 5; i++) {
+                double angle = Math.toRadians(-90 + i * 72);
+                int r = (int) (radius * (scores[i] / 100.0));
+                int x = (int) (cx + Math.cos(angle) * r);
+                int y = (int) (cy + Math.sin(angle) * r);
+                dataPoly.addPoint(x, y);
+            }
+
+            g2.setColor(new Color(255, 71, 87, 80));
+            g2.fillPolygon(dataPoly);
+
+            g2.setColor(COLOR_DANGER);
+            g2.setStroke(new BasicStroke(3f));
+            g2.drawPolygon(dataPoly);
+
+            g2.setColor(Color.WHITE);
+            for (int i = 0; i < 5; i++) {
+                g2.fillOval(dataPoly.xpoints[i] - 4, dataPoly.ypoints[i] - 4, 8, 8);
+            }
+
+            g2.dispose();
+        }
+
+        private void drawWebPolygon(Graphics2D g2, int cx, int cy, int r) {
+            Polygon p = new Polygon();
+            for (int i = 0; i < 5; i++) {
+                double angle = Math.toRadians(-90 + i * 72);
+                p.addPoint((int) (cx + Math.cos(angle) * r), (int) (cy + Math.sin(angle) * r));
+            }
+            g2.drawPolygon(p);
+        }
     }
 
     // --- UI HELPERS ---
@@ -806,7 +954,6 @@ public class MainWindow extends JFrame {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(COLOR_CARD);
                 g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 16, 16));
-
                 g2.setColor(COLOR_ACCENT);
                 g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), 4, 16, 16));
                 g2.fillRect(0, 2, getWidth(), 2);
@@ -934,7 +1081,6 @@ public class MainWindow extends JFrame {
         l.setForeground(COLOR_MUTED);
         l.setFont(new Font("Segoe UI", Font.BOLD, 13));
         l.setBorder(new EmptyBorder(5, 0, 8, 0));
-        l.setAlignmentX(Component.LEFT_ALIGNMENT);
         return l;
     }
 
@@ -966,7 +1112,7 @@ public class MainWindow extends JFrame {
                 }
                 public void mouseExited(MouseEvent evt) {
                     if (isEnabled()) {
-                        if (getText().contains("Threat Scan")) {
+                        if (getText().contains("Scan Email")) {
                             setBackground(COLOR_ACCENT);
                         } else if (getText().contains("Mark as Safe")) {
                             setBackground(COLOR_SAFE);
@@ -990,8 +1136,27 @@ public class MainWindow extends JFrame {
     }
 
     // ==========================================
-    // LOGIC
+    // LOGIC & LINK BLOCKER
     // ==========================================
+
+    private void blockDangerousLinks() {
+        String originalText = bodyArea.getText();
+
+        String safeText = originalText.replaceAll("(?i)(https?://\\S+|www\\.\\S+)", "[LINK BLOCKED FOR SAFETY]");
+
+        if (!originalText.equals(safeText)) {
+            bodyArea.setText(safeText);
+            bodyArea.setForeground(new Color(255, 100, 100));
+
+            UIManager.put("OptionPane.messageForeground", COLOR_DANGER);
+            JOptionPane.showMessageDialog(this,
+                    "For your safety, the bad links in this email have been blocked and removed.",
+                    "Links Blocked!",
+                    JOptionPane.WARNING_MESSAGE);
+            UIManager.put("OptionPane.messageForeground", COLOR_TEXT);
+        }
+    }
+
     private void runLiveScan() {
         String sender = senderField.getText().trim();
         String body = bodyArea.getText().trim();
@@ -1001,10 +1166,12 @@ public class MainWindow extends JFrame {
             return;
         }
 
+        bodyArea.setForeground(Color.WHITE);
+
         scanButton.setEnabled(false);
         feedbackPanel.setVisible(false);
         riskMeter.setValue(0);
-        riskMeter.setString("Scanning Payload...");
+        riskMeter.setString("Scanning...");
         valDecision.setText("ANALYZING...");
         valDecision.setForeground(COLOR_MUTED);
 
@@ -1017,8 +1184,7 @@ public class MainWindow extends JFrame {
                         scanButton.setEnabled(true);
                         valDecision.setText("API ERROR");
                         valDecision.setForeground(COLOR_DANGER);
-                        riskMeter.setString("Backend Error: " + (res.has("error") ? res.get("error").getAsString() : "Invalid data"));
-                        riskMeter.setForeground(COLOR_DANGER);
+                        riskMeter.setString("Backend Error");
                     });
                     return;
                 }
@@ -1028,6 +1194,7 @@ public class MainWindow extends JFrame {
                 double levScore = res.has("lev_score") ? res.get("lev_score").getAsDouble() : 0.0;
                 double aiProb = res.has("ai_prob") ? res.get("ai_prob").getAsDouble() : score;
                 int keywordsCount = res.has("keyword_count") ? res.get("keyword_count").getAsInt() : 0;
+                String authCheck = res.has("auth_check") ? res.get("auth_check").getAsString() : "UNVERIFIED";
 
                 SwingUtilities.invokeLater(() -> {
                     scanButton.setEnabled(true);
@@ -1039,9 +1206,19 @@ public class MainWindow extends JFrame {
                     boolean isDangerous = finalScoreInt >= 75;
                     boolean isSafe = finalScoreInt < 45;
 
-                    // DYNAMIC BUTTON LOGIC
+                    // --- Radar Update ---
+                    int vBrand = (levScore > 0.84 && levScore < 1.0) ? 95 : (levScore < 0.5 ? 60 : 10);
+                    int vNLP = Math.min(100, keywordsCount * 25);
+                    int vURL = body.contains("http") ? (isDangerous ? 85 : 40) : 10;
+                    int vAuth = authCheck.equals("UNVERIFIED") ? 75 : 10;
+                    int vStruct = (body.contains("<html") || body.contains("href")) ? 65 : 15;
+
+                    if (radarChart != null) {
+                        radarChart.updateScores(new int[]{vBrand, vNLP, vURL, vAuth, vStruct});
+                    }
+
                     if (isSafe) {
-                        feedbackTxt.setText("Missed a threat?");
+                        feedbackTxt.setText("Did we miss a threat?");
                         btnReportMistake.setText("Mark as Phishing");
                         btnReportMistake.setBackground(COLOR_DANGER);
                     } else {
@@ -1050,19 +1227,9 @@ public class MainWindow extends JFrame {
                         btnReportMistake.setBackground(COLOR_SAFE);
                     }
 
-                    if (isDangerous) {
-                        String originalText = bodyArea.getText();
-                        String sanitizedText = originalText.replaceAll("(?i)\\b(https?://|www\\.)\\S+\\b", "[MALICIOUS_LINK_BLOCKED]");
-                        if (!originalText.equals(sanitizedText)) {
-                            bodyArea.setText(sanitizedText);
-                        }
 
-                        UIManager.put("OptionPane.messageForeground", COLOR_DANGER);
-                        JOptionPane.showMessageDialog(this,
-                                "SECURITY ALERT: Malicious Payload Detected (Score: " + finalScoreInt + "%).\nStructural links have been disabled to protect the host.",
-                                "Threat Neutralized",
-                                JOptionPane.WARNING_MESSAGE);
-                        UIManager.put("OptionPane.messageForeground", COLOR_TEXT);
+                    if (isDangerous) {
+                        blockDangerousLinks();
                     }
 
                     boolean hasLinks = body.contains("http");
@@ -1096,20 +1263,14 @@ public class MainWindow extends JFrame {
                     }
                     feedbackPanel.setVisible(true);
 
-                    // רענון אוטומטי של שתי הטבלאות לאחר סריקה
-                    if (activeHistoryModel != null) {
-                        refreshLogs(activeHistoryModel);
-                    }
-                    if (fullHistoryModel != null) {
-                        refreshLogs(fullHistoryModel);
-                    }
+                    if (activeHistoryModel != null) refreshLogs(activeHistoryModel);
+                    if (fullHistoryModel != null) refreshLogs(fullHistoryModel);
                 });
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> {
                     scanButton.setEnabled(true);
                     valDecision.setText("OFFLINE");
-                    riskMeter.setString("Connection Error - Engine Offline");
-                    riskMeter.setForeground(COLOR_DANGER);
+                    riskMeter.setString("Connection Error");
                 });
             }
         }).start();
@@ -1121,7 +1282,7 @@ public class MainWindow extends JFrame {
                 JsonArray history = ApiService.getHistory();
                 SwingUtilities.invokeLater(() -> {
                     model.setRowCount(0);
-                    if (history != null && history.size() > 0) {
+                    if (history != null) {
                         for (JsonElement element : history) {
                             JsonObject obj = element.getAsJsonObject();
                             model.addRow(new Object[]{
@@ -1133,21 +1294,18 @@ public class MainWindow extends JFrame {
                         }
                     }
                 });
-            } catch (Exception ex) {
-            }
+            } catch (Exception ignored) {}
         }).start();
     }
 
     private void sendHumanOverride() {
-        // DYNAMIC FEEDBACK LOGIC
         String correctLabel = (lastClassification.equalsIgnoreCase("Safe")) ? "Phishing" : "Safe";
-
         new Thread(() -> {
             try {
                 ApiService.sendFeedback(lastSender, correctLabel);
                 SwingUtilities.invokeLater(() -> {
                     feedbackPanel.setVisible(false);
-                    JOptionPane.showMessageDialog(this, "Feedback Processed!\nThe system is adjusting weights and rescanning the email...");
+                    JOptionPane.showMessageDialog(this, "Fixed!\nThe system will now re-scan the email...");
                     runLiveScan();
                 });
             } catch (Exception ex) {
